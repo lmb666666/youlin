@@ -100,4 +100,14 @@ describe('feed 解析', () => {
     await expect(parseFeed('<rss><channel>')).rejects.toThrow()
     await expect(parseFeed('<html><body>不是 feed</body></html>')).rejects.toThrow('unknown_feed_format')
   })
+
+  it('guid 不是 URL 且无 link → 条目丢弃（不把 tag: 之类的值写进 link）', async () => {
+    const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>
+      <item><title>无链接但有 tag guid</title><guid isPermaLink="false">tag:blog.example.com,2026:1</guid><pubDate>Mon, 05 Oct 2026 12:00:00 GMT</pubDate></item>
+      <item><title>guid 是可用的永久链接</title><guid>https://a.example.com/permalink</guid><pubDate>Mon, 05 Oct 2026 12:00:00 GMT</pubDate></item>
+    </channel></rss>`
+    const feed = await parseFeed(xml)
+    expect(feed.entries).toHaveLength(1)
+    expect(feed.entries[0]!.link).toBe('https://a.example.com/permalink')
+  })
 })

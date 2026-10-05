@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Play, RefreshCw, Rss } from 'lucide-react'
+import { Newspaper, Play, RefreshCw, Rss, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { api, type CrawlStatus, type HealthFriend } from '@/lib/api'
+import { api, type ArticleRow, type CrawlStatus, type HealthFriend } from '@/lib/api'
 
 function fmt(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -17,18 +17,21 @@ function fmt(iso: string | null | undefined): string {
 export default function CirclePage() {
   const [friends, setFriends] = useState<HealthFriend[] | null>(null)
   const [status, setStatus] = useState<CrawlStatus | null>(null)
+  const [articles, setArticles] = useState<ArticleRow[]>([])
   const [busy, setBusy] = useState(false)
   const [singleBusy, setSingleBusy] = useState<number | null>(null)
   const pollRef = useRef<number | null>(null)
 
   const reload = useCallback(async () => {
     try {
-      const [h, s] = await Promise.all([
+      const [h, s, a] = await Promise.all([
         api<{ friends: HealthFriend[] }>('/api/admin/health'),
         api<CrawlStatus>('/api/admin/crawl/status'),
+        api<{ articles: ArticleRow[] }>('/api/admin/articles'),
       ])
       setFriends(h.friends)
       setStatus(s)
+      setArticles(a.articles.slice(0, 20))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '加载失败')
     }
@@ -92,6 +95,16 @@ export default function CirclePage() {
       toast.error(err instanceof Error ? err.message : '抓取失败')
     } finally {
       setSingleBusy(null)
+    }
+  }
+
+  async function deleteArticle(id: number) {
+    try {
+      await api(`/api/admin/articles/${id}`, { method: 'DELETE' })
+      toast.success('文章已删除')
+      void reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '删除失败')
     }
   }
 
@@ -205,6 +218,49 @@ export default function CirclePage() {
                       </TableRow>
                     )
                   })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Newspaper className="size-4" /> 最近文章（{articles.length}）
+          </CardTitle>
+          <CardDescription>库内按发布时间倒序的最新文章；过旧文章由每日清理任务自动删除。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {articles.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">还没有文章——抓取成功后这里会显示朋友们的最近动态。</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>标题</TableHead>
+                  <TableHead className="hidden sm:table-cell">来源</TableHead>
+                  <TableHead className="hidden md:table-cell">发布时间</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {articles.map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell className="max-w-96">
+                      <a href={a.link} target="_blank" rel="noopener noreferrer" className="block truncate font-medium hover:underline">
+                        {a.title}
+                      </a>
+                    </TableCell>
+                    <TableCell className="hidden text-xs sm:table-cell">{a.friendAuthor}</TableCell>
+                    <TableCell className="hidden text-xs md:table-cell">{fmt(a.publishedAt)}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive" onClick={() => void deleteArticle(a.id)} aria-label="删除文章">
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           )}

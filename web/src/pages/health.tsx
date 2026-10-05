@@ -126,16 +126,32 @@ export default function HealthPage() {
     }
   }, [])
 
+  const attempts = useRef(0)
+
   const pollStatus = useCallback(async () => {
     try {
-      const s = await api<{ running: boolean; round: { kind: string } | null }>('/api/admin/crawl/status')
-      if (s.running && s.round?.kind !== 'health') return // 只关注体检轮转
-      if (!s.running) {
+      const s = await api<{ running: boolean; round: { kind: string; done: number; total: number } | null }>(
+        '/api/admin/crawl/status',
+      )
+      if (s.running) return // 任何轮转运行中都继续等（不区分 kind，避免把 crawl 轮转误判为完成）
+      attempts.current++
+      if (s.round?.kind === 'health') {
         setRunning(false)
         if (pollRef.current) {
           window.clearInterval(pollRef.current)
           pollRef.current = null
           toast.success('体检完成')
+          void reload()
+        }
+        return
+      }
+      // 未见体检轮转记录（可能启动竞态）：有限次重试后放弃
+      if (attempts.current >= 15) {
+        setRunning(false)
+        if (pollRef.current) {
+          window.clearInterval(pollRef.current)
+          pollRef.current = null
+          toast.info('体检已结束或状态未知，请手动刷新')
           void reload()
         }
       }
@@ -158,6 +174,7 @@ export default function HealthPage() {
         return
       }
       toast.success(`已开始体检 ${r.started} 个站点，完成后自动刷新`)
+      attempts.current = 0
       setRunning(true)
       pollRef.current = window.setInterval(() => void pollStatus(), 1500)
     } catch (err) {

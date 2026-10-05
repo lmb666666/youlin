@@ -72,8 +72,8 @@ describe('接口二 GET /api/circle 契约', () => {
     }
     expect(validate(body)).toBe(true)
 
-    expect(body.stats.friends).toBe(1) // 甲（feed+crawlable=1）
-    expect(body.stats.failed).toBe(1) // 乙
+    expect(body.stats.friends).toBe(2) // 甲、乙（参与朋友圈 = feed 可用）
+    expect(body.stats.failed).toBe(1) // 乙（reachable=0）
     expect(body.stats.active).toBe(1) // 甲有文章
     expect(body.stats.articles).toBe(2) // 丙的两篇不计
     expect(body.stats.updatedAt).toBe('2026-10-05T09:30:00Z')

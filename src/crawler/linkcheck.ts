@@ -2,16 +2,22 @@ import type { Env, AppConfig } from '../types'
 import { parseFeed, withResolvedGuids } from './parse'
 import { extractDeclaredFeeds, commonFeedPaths } from './discover'
 import { fetchRemote, nextIntervalHours } from './http'
-import { daysSince } from '../util/time'
+import { daysSince, dbTime } from '../util/time'
 import type { FriendRow } from './crawl'
 
 /**
  * 体检（DESIGN §6 三路口径）：
  *   RSS 可解析 = 可达 + 可抓取（进朋友圈）
- *   → RSS 不可用：发现常见 feed 路径 → 首页可达 = 可达但不可抓取（只进接口一/体检）
+ *   → RSS 不可用（未配置 / 已挂 / 解析失败）：发现常见 feed 路径 → 首页可达 = 可达但不可抓取
  *   → 首页也不可达：可选第三方状态 API 兜底（api_only，只标记可达性）
  * 反链检测：抓对方站点页面，检索是否含指向 backlink.authorUrl 的链接。
  */
+
+export interface PriorState {
+  unreachable_since: string | null
+  rss_unavailable_since: string | null
+  fail_count: number
+}
 
 export interface HealthResult {
   reachable: boolean
@@ -35,8 +41,9 @@ export async function checkFriendHealth(env: Env, cfg: AppConfig, friend: Friend
   }
 
   // ── 第一路：已知 feed ──
+  let feedUsable = false
   if (friend.feed) {
-    const res = await fetchRemote(env, { url: friend.feed, cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds, proxyMode: 'fallback' })
+    const res = await fetchRemote(env, { url: friend.feed, cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds })
     if (!res.error && res.status === 200) {
       try {
         const entries = await withResolvedGuids(await parseFeed(res.body ?? ''))
@@ -47,17 +54,21 @@ export async function checkFriendHealth(env: Env, cfg: AppConfig, friend: Friend
         result.latencyMs = res.latencyMs
         result.finalUrl = res.finalUrl
         result.lastPostPublished = newestPublished(entries)
-        await checkBacklink(env, cfg, friend, result)
-        return result
-      } catch { /* 落入第二路 */ }
-    } else if (res.error || res.status === 0) {
-      // feed 网络层失败不代表站点不可达，但先记下来； homepage 通了再改判
+        feedUsable = true
+      } catch (e) {
+        result.lastError = `parse: ${e instanceof Error ? e.message : e}`
+      }
+    } else {
       result.lastError = res.error ?? `feed HTTP ${res.status}`
+    }
+    if (feedUsable) {
+      await checkBacklink(env, cfg, friend, result)
+      return result
     }
   }
 
-  // ── 第二路：首页 + feed 发现 ──
-  const home = await fetchRemote(env, { url: friend.link, cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds, proxyMode: 'fallback' })
+  // ── 第二路：首页 + feed 发现（未配置 feed，或已配置的 feed 失败时）──
+  const home = await fetchRemote(env, { url: friend.link, cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds })
   if (!home.error && home.status < 400 && home.body !== null) {
     result.reachable = true
     result.httpStatus = home.status
@@ -65,11 +76,12 @@ export async function checkFriendHealth(env: Env, cfg: AppConfig, friend: Friend
     result.finalUrl = home.finalUrl
     result.lastError = null
 
-    // feed 发现（已知 feed 失败或缺失时）：声明式 <link> 优先，再试常见路径
     const declared = extractDeclaredFeeds(home.body, home.finalUrl)
-    const candidates = [...(friend.feed ? [] : declared), ...(friend.feed ? [] : commonFeedPaths(friend.link))].slice(0, 4)
+    const candidates = [...declared, ...commonFeedPaths(friend.link)]
+      .filter((c) => c !== friend.feed)
+      .slice(0, 5)
     for (const candidate of candidates) {
-      const feedRes = await fetchRemote(env, { url: candidate, cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds, proxyMode: 'fallback' })
+      const feedRes = await fetchRemote(env, { url: candidate, cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds })
       if (feedRes.error || feedRes.status !== 200) continue
       try {
         const entries = await withResolvedGuids(await parseFeed(feedRes.body ?? ''))
@@ -80,13 +92,10 @@ export async function checkFriendHealth(env: Env, cfg: AppConfig, friend: Friend
         break
       } catch { /* 下一个候选 */ }
     }
-    if (!result.crawlable) {
-      result.bestMethod = 'homepage'
-      // 顺路做反链：首页 HTML 已在手
-      await checkBacklink(env, cfg, friend, result, home.body)
-      return result
-    }
-    await checkBacklink(env, cfg, friend, result)
+    if (!result.crawlable) result.bestMethod = 'homepage'
+
+    // 首页 HTML 已在手，直接做反链
+    await checkBacklink(env, cfg, friend, result, home.body)
     return result
   }
 
@@ -94,7 +103,8 @@ export async function checkFriendHealth(env: Env, cfg: AppConfig, friend: Friend
   if (cfg.linkCheck.statusApiUrl) {
     const apiRes = await fetchRemote(env, {
       url: cfg.linkCheck.statusApiUrl.replace('{url}', encodeURIComponent(friend.link)),
-      cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds, proxyMode: 'off',
+      cfg,
+      timeoutSeconds: cfg.linkCheck.timeoutSeconds,
       headers: { Accept: 'application/json,text/plain' },
     })
     if (!apiRes.error && apiRes.status < 400) {
@@ -105,7 +115,7 @@ export async function checkFriendHealth(env: Env, cfg: AppConfig, friend: Friend
     } else {
       result.lastError = apiRes.error ?? `status api HTTP ${apiRes.status}`
     }
-  } else if (!result.lastError) {
+  } else {
     result.lastError = home.error ?? (home.status ? `homepage HTTP ${home.status}` : 'network_error')
   }
   return result
@@ -116,7 +126,7 @@ function newestPublished(entries: { publishedAt: string }[]): string | null {
   return entries.reduce((max, e) => (e.publishedAt > max ? e.publishedAt : max), entries[0]!.publishedAt)
 }
 
-/** 反链检测：多形态匹配自家域名（https/http/协议相对/裸域）。pageHtml 已有则不再抓取；仅对 2xx 页面判定 */
+/** 反链检测：多形态匹配自家域名（https/http/协议相对/www/子域）。pageHtml 已有则不再抓取；仅对 2xx 页面判定 */
 async function checkBacklink(env: Env, cfg: AppConfig, friend: FriendRow, result: HealthResult, pageHtml?: string): Promise<void> {
   if (!cfg.backlink.enabled) return
   const mine = normalizeDomain(cfg.backlink.authorUrl || cfg.site.url)
@@ -126,8 +136,21 @@ async function checkBacklink(env: Env, cfg: AppConfig, friend: FriendRow, result
     result.backlink = htmlContainsBacklink(pageHtml, mine)
     return
   }
-  const res = await fetchRemote(env, { url: friend.link, cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds, proxyMode: 'fallback' })
+  const res = await fetchRemote(env, { url: friend.link, cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds })
   result.backlink = res.status >= 200 && res.status < 300 && res.body !== null ? htmlContainsBacklink(res.body, mine) : null
+}
+
+/** 抓取成功路径上的反链刷新（每次实际检查都刷新；失败则保留原值） */
+export async function refreshBacklink(db: Env['DB'], env: Env, cfg: AppConfig, friend: FriendRow): Promise<void> {
+  const mine = normalizeDomain(cfg.backlink.authorUrl || cfg.site.url)
+  if (!mine) return
+  const res = await fetchRemote(env, { url: friend.link, cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds })
+  if (res.status < 200 || res.status >= 300 || res.body === null) return
+  const ok = htmlContainsBacklink(res.body, mine)
+  await db
+    .prepare('UPDATE source_state SET backlink_checked = 1, backlink = ? WHERE friend_id = ?')
+    .bind(ok ? 1 : 0, friend.id)
+    .run()
 }
 
 export function normalizeDomain(url: string): string | null {
@@ -141,7 +164,7 @@ export function normalizeDomain(url: string): string | null {
   }
 }
 
-/** https://x / http://x / //x / //www.x / 裸域（href 内） */
+/** https://x / http://x / //x / //www.x / 子域（href 内） */
 export function htmlContainsBacklink(html: string, domain: string): boolean {
   const escaped = domain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const patterns = [
@@ -158,17 +181,18 @@ export async function persistHealth(
   cfg: AppConfig,
   friendId: number,
   r: HealthResult,
-  previous: { unreachable_since: string | null; rss_unavailable_since: string | null; fail_count: number } | null,
+  previous: PriorState | null,
 ): Promise<void> {
-  const nowDb = new Date().toISOString().slice(0, 19).replace('T', ' ')
+  const nowDb = dbTime(new Date().toISOString())
   const unreachableSince = r.reachable ? null : (previous?.unreachable_since ?? nowDb)
   const rssUnavailableSince = r.crawlable ? null : (previous?.rss_unavailable_since ?? nowDb)
   const failCount = r.reachable ? 0 : (previous?.fail_count ?? 0) + 1
-  const unreachableDays = r.reachable ? null : daysSince(previous?.unreachable_since) ?? 0
-  const lastPostDb = r.lastPostPublished ? r.lastPostPublished.slice(0, 19).replace('T', ' ') : null
+  const unreachableDays = r.reachable ? null : (daysSince(previous?.unreachable_since) ?? 0)
+  const lastPostDb = r.lastPostPublished ? dbTime(r.lastPostPublished) : null
   const lastPostDays = r.lastPostPublished
     ? Math.max(0, Math.floor((Date.now() - new Date(r.lastPostPublished).getTime()) / 86_400_000))
     : null
+  const base = Math.round(nextIntervalHours(unreachableDays, cfg, cfg.linkCheck.maxAgeHours))
 
   await db.prepare(
     `INSERT INTO source_state (
@@ -202,7 +226,7 @@ export async function persistHealth(
       lastPostDays,
       r.lastError,
       failCount,
-      `+${Math.round(nextIntervalHours(unreachableDays, cfg, cfg.linkCheck.maxAgeHours))} minutes`,
+      `+${base * 60} minutes`,
     )
     .run()
 }

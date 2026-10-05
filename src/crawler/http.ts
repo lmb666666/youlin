@@ -1,10 +1,9 @@
 import type { Env, AppConfig } from '../types'
 
 /**
- * 出站 HTTP（抓取/体检/反链共用）：
- *  - UA 模板 {site.url} 替换
- *  - 超时 AbortSignal.timeout
- *  - 代理三模式（off / fallback / always，代理 = 前缀 + 目标 URL）
+ * 出站 HTTP（抓取/体检/反链/申请共用）：
+ *  - UA 模板 {site.url} 替换；超时 AbortSignal.timeout
+ *  - 代理策略统一走 cfg.proxy.mode（off / fallback / always）
  */
 
 export interface FetchOptions {
@@ -12,7 +11,6 @@ export interface FetchOptions {
   cfg: AppConfig
   timeoutSeconds: number
   headers?: Record<string, string>
-  proxyMode?: 'off' | 'fallback' | 'always'
 }
 
 export interface FetchResult {
@@ -25,98 +23,70 @@ export interface FetchResult {
   error?: string
 }
 
-function applyProxy(cfg: AppConfig, url: string, mode: 'off' | 'fallback' | 'always'): string {
-  if (mode === 'off' || !cfg.proxy.url) return url
-  if (mode === 'always' || cfg.proxy.mode === 'always') return cfg.proxy.url + url
-  return url // fallback 由调用方重试
-}
-
 export function userAgent(cfg: AppConfig): string {
   return cfg.crawl.userAgent.replace('{site.url}', cfg.site.url || '')
 }
 
 export async function fetchRemote(env: Env, opts: FetchOptions): Promise<FetchResult> {
+  void env
+  const { cfg } = opts
   const started = Date.now()
-  const mode = opts.proxyMode ?? cfgProxyMode(opts.cfg)
-  const doFetch = async (url: string): Promise<Response> =>
-    fetch(url, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: {
-        'User-Agent': userAgent(opts.cfg),
-        Accept: 'text/html,application/xhtml+xml,application/xml,application/rss+xml,application/atom+xml;q=0.9,*/*;q=0.8',
-        ...opts.headers,
-      },
-      signal: AbortSignal.timeout(opts.timeoutSeconds * 1000),
-    })
+  const proxy = cfg.proxy.url
+  const mode = cfg.proxy.mode
 
-  try {
-    const url = applyProxy(opts.cfg, opts.url, mode)
-    const res = await doFetch(url)
-    const body = res.status === 304 ? null : await res.text()
-    return {
-      ok: res.ok,
-      status: res.status,
-      headers: res.headers,
-      body,
-      finalUrl: res.url || opts.url,
-      latencyMs: Date.now() - started,
-    }
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e)
-    // fallback：直连失败（网络层）且配置了代理 → 走代理再试一次
-    if (mode === 'fallback' && opts.cfg.proxy.url) {
-      try {
-        const res = await doFetch(opts.cfg.proxy.url + opts.url)
-        const body = res.status === 304 ? null : await res.text()
-        return {
-          ok: res.ok,
-          status: res.status,
-          headers: res.headers,
-          body,
-          finalUrl: res.url || opts.url,
-          latencyMs: Date.now() - started,
-        }
-      } catch (e2) {
-        return {
-          ok: false,
-          status: 0,
-          headers: new Headers(),
-          body: null,
-          finalUrl: opts.url,
-          latencyMs: Date.now() - started,
-          error: e2 instanceof Error ? e2.message : String(e2),
-        }
+  const attempt = async (url: string): Promise<FetchResult> => {
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: {
+          'User-Agent': userAgent(cfg),
+          Accept: 'text/html,application/xhtml+xml,application/xml,application/rss+xml,application/atom+xml;q=0.9,*/*;q=0.8',
+          ...opts.headers,
+        },
+        signal: AbortSignal.timeout(opts.timeoutSeconds * 1000),
+      })
+      const body = res.status === 304 ? null : await res.text()
+      return {
+        ok: res.ok,
+        status: res.status,
+        headers: res.headers,
+        body,
+        finalUrl: res.url || url,
+        latencyMs: Date.now() - started,
+      }
+    } catch (e) {
+      return {
+        ok: false,
+        status: 0,
+        headers: new Headers(),
+        body: null,
+        finalUrl: url,
+        latencyMs: Date.now() - started,
+        error: e instanceof Error ? e.message : String(e),
       }
     }
-    return {
-      ok: false,
-      status: 0,
-      headers: new Headers(),
-      body: null,
-      finalUrl: opts.url,
-      latencyMs: Date.now() - started,
-      error: message,
-    }
   }
+
+  if (mode === 'always' && proxy) return attempt(proxy + opts.url)
+  const direct = await attempt(opts.url)
+  // fallback：直连网络层失败（拿到任何 HTTP 状态码都不算）再走代理
+  if (direct.error && mode === 'fallback' && proxy) return attempt(proxy + opts.url)
+  return direct
 }
 
-function cfgProxyMode(cfg: AppConfig): 'off' | 'fallback' | 'always' {
-  return cfg.proxy.mode
-}
-
-/** 失联退避阶梯（DESIGN §6.5）：失联天数 ≥ 阶梯天数 → 对应间隔小时；否则常规间隔 */
+/** 失联退避阶梯（DESIGN §6.5）：失联天数 ≥ 阶梯天数 → 取满足条件的最高档；否则常规间隔 */
 export function nextIntervalHours(unreachableDays: number | null, cfg: AppConfig, baseHours: number): number {
   if (unreachableDays === null) return baseHours
   const ladder = [...cfg.linkCheck.backoffLadder].sort((a, b) => a[0] - b[0])
   let result: number | null = null
   for (const [days, hours] of ladder) {
-    if (unreachableDays >= days) result = hours // 取满足条件的最高档
+    if (unreachableDays >= days) result = hours
   }
   return result ?? baseHours
 }
 
-/** 运行时簿记（轮转进度）：存 settings 表 internal.* 键，不属于应用配置 */
+/** 运行时簿记（轮转进度 / 清理水位 / 重建防抖）：存 settings 表 internal.* 键，不属于应用配置 */
 export async function runtimeGet(db: Env['DB'], key: string): Promise<unknown | null> {
   const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(key).first<{ value: string }>()
   if (!row) return null

@@ -1,14 +1,11 @@
-
 import { Hono, type Context } from 'hono'
-import { jsonError } from '../../util/http'
+import { jsonError, readJson } from '../../util/http'
 import { isoUtc } from '../../util/time'
 import { loadConfig } from '../../config/loader'
-import { runManualRound, type FriendRow } from '../../crawler/crawl'
-import { checkFriendHealth, persistHealth } from '../../crawler/linkcheck'
-import { runtimeGet, runtimeSet } from '../../crawler/http'
+import { runManualRound, runHealthRound } from '../../crawler/crawl'
 import { extractDeclaredFeeds, commonFeedPaths } from '../../crawler/discover'
-import { fetchRemote } from '../../crawler/http'
-import { parseFeed, withResolvedGuids } from '../../crawler/parse'
+import { fetchRemote, runtimeGet } from '../../crawler/http'
+import { parseFeed } from '../../crawler/parse'
 import type { AppConfig, AppEnv } from '../../types'
 
 /**
@@ -18,28 +15,24 @@ import type { AppConfig, AppEnv } from '../../types'
  *   GET  /api/admin/articles         文章列表（可按源筛）
  *   DELETE /api/admin/articles/:id
  *   POST /api/admin/crawl            手动全量抓取一轮（后台并发）
+ *   POST /api/admin/crawl/:friendId  单源手动抓取（同步）
  *   GET  /api/admin/crawl/status     轮转进度
+ *   POST /api/admin/friends/:id/probe    自动探测（已保存的友链）
+ *   POST /api/admin/friends/probe        自动探测（表单预保存：body { link, feed? }）
  */
 
-interface FullStateRow {
-  friend_id: number
-  reachable: number | null
-  crawlable: number | null
-  best_method: string | null
-  http_status: number | null
-  latency_ms: number | null
-  final_url: string | null
-  backlink_checked: number | null
-  backlink: number | null
-  unreachable_since: string | null
-  rss_unavailable_since: string | null
-  last_post_published: string | null
-  last_post_days_ago: number | null
-  last_ok_at: string | null
-  last_error: string | null
-  fail_count: number
-  next_check_at: string | null
-  checked_at: string | null
+interface FriendBrief {
+  id: number
+  author: string
+  link: string
+  feed: string | null
+}
+
+interface ProbeResult {
+  feed?: string
+  title?: string
+  icon?: string
+  avatar?: string
 }
 
 export function crawlerRoutes() {
@@ -86,27 +79,29 @@ export function crawlerRoutes() {
     })
   })
 
-  // 全量体检：waitUntil 后台跑（10ms CPU 限制内逐个检测）
+  // 全量体检：waitUntil 后台跑（进度见 /crawl/status）
   app.post('/api/admin/health/run', async (c) => {
     const { cfg } = await loadConfig(c.env.DB, c.env)
     if (!cfg.linkCheck.enabled) return jsonError(400, 'health_disabled', '体检总开关已关闭（linkCheck.enabled）')
     const n = await countActive(c)
     if (n === 0) return c.json({ started: 0 })
-    c.executionCtx.waitUntil(runHealthRound(c.env, cfg))
+    c.executionCtx.waitUntil(runHealthRound(c.env.DB, c.env, cfg))
     return c.json({ started: n })
   })
 
   app.get('/api/admin/articles', async (c) => {
     const friendId = Number(c.req.query('friendId'))
-    const where = Number.isInteger(friendId) && friendId > 0 ? 'WHERE a.friend_id = ?' : ''
+    const filter = Number.isInteger(friendId) && friendId > 0
     const stmt = c.env.DB.prepare(
-      `SELECT a.id, a.friend_id, f.author AS friend_author, a.guid, a.title, a.link, a.author, a.published_at, a.fetched_at
+      `SELECT a.id, a.friend_id, f.author AS friend_author, a.title, a.link, a.author, a.published_at, a.fetched_at
          FROM articles a JOIN friends f ON f.id = a.friend_id
-         ${where}
+         ${filter ? 'WHERE a.friend_id = ?' : ''}
         ORDER BY a.published_at DESC, a.id DESC
         LIMIT 200`,
     )
-    const rows = Number.isInteger(friendId) && friendId > 0 ? await stmt.bind(friendId).all<Record<string, unknown>>() : await stmt.all<Record<string, unknown>>()
+    const rows = filter
+      ? await stmt.bind(friendId).all<Record<string, unknown>>()
+      : await stmt.all<Record<string, unknown>>()
     return c.json({
       articles: rows.results.map((r) => ({
         id: r.id,
@@ -136,7 +131,7 @@ export function crawlerRoutes() {
     }
     const n = await countActive(c)
     if (n === 0) return c.json({ started: 0 })
-    c.executionCtx.waitUntil(runManualRound(c.env.DB, c.env, cfg, 'crawl'))
+    c.executionCtx.waitUntil(runManualRound(c.env.DB, c.env, cfg))
     return c.json({ started: n })
   })
 
@@ -146,11 +141,11 @@ export function crawlerRoutes() {
     if (!Number.isInteger(friendId)) return jsonError(400, 'invalid_id', 'id 不合法')
     const friend = await c.env.DB.prepare('SELECT id, author, link, feed, in_circle FROM friends WHERE id = ? AND status = ?')
       .bind(friendId, 'active')
-      .first<{ id: number; author: string; link: string; feed: string | null; in_circle: number }>()
+      .first<FriendBrief & { in_circle: number }>()
     if (!friend) return jsonError(404, 'not_found', '友链不存在或未启用')
     const { cfg } = await loadConfig(c.env.DB, c.env)
-    if (friend.feed && !cfg.crawl.enabled && !cfg.linkCheck.enabled) {
-      return jsonError(400, 'crawl_disabled', '抓取总开关已关闭（crawl.enabled）')
+    if (!cfg.crawl.enabled && !cfg.linkCheck.enabled) {
+      return jsonError(400, 'crawl_disabled', '抓取与体检总开关均已关闭')
     }
     const { crawlSource } = await import('../../crawler/crawl')
     const outcome = await crawlSource(c.env.DB, c.env, cfg, friend)
@@ -176,65 +171,31 @@ export function crawlerRoutes() {
     })
   })
 
-  // 自动探测：RSS 发现（<link> 声明优先 + 常见路径）、favicon、站点标题、og:image
+  // 探测：表单预保存场景（body 直接给 link/feed，无需先存库）
+  app.post('/api/admin/friends/probe', async (c) => {
+    const body = await readJson(c)
+    const input = body as { link?: unknown; feed?: unknown } | null
+    const link = typeof input?.link === 'string' ? input.link.trim() : ''
+    if (!/^https?:\/\//.test(link)) return jsonError(400, 'invalid_link', '请先填写合法的站点链接（http/https）')
+    const feed = typeof input?.feed === 'string' && input.feed.trim() !== '' ? input.feed.trim() : null
+    const { cfg } = await loadConfig(c.env.DB, c.env)
+    const probe = await runProbe(c.env, cfg, { link, feed })
+    if ('error' in probe) return jsonError(502, 'probe_unreachable', probe.error)
+    return c.json({ probe })
+  })
+
+  // 探测：已保存的友链（DESIGN §5）
   app.post('/api/admin/friends/:id/probe', async (c) => {
     const id = Number(c.req.param('id'))
     if (!Number.isInteger(id)) return jsonError(400, 'invalid_id', 'id 不合法')
     const friend = await c.env.DB.prepare('SELECT id, author, link, feed FROM friends WHERE id = ?')
       .bind(id)
-      .first<{ id: number; author: string; link: string; feed: string | null }>()
+      .first<FriendBrief>()
     if (!friend) return jsonError(404, 'not_found', '友链不存在')
-
     const { cfg } = await loadConfig(c.env.DB, c.env)
-
-    const home = await fetchRemote(c.env, { url: friend.link, cfg, timeoutSeconds: cfg.crawl.timeoutSeconds, proxyMode: 'fallback' })
-    if (home.error || home.status >= 400 || home.body === null) {
-      return jsonError(502, 'probe_unreachable', home.error ?? `站点不可达（HTTP ${home.status}）`)
-    }
-
-    const out: { feed?: string; title?: string; icon?: string; avatar?: string } = {}
-
-    // feed：已配置则不重复发现；否则声明式优先、常见路径兜底
-    if (!friend.feed) {
-      const declared = extractDeclaredFeeds(home.body, home.finalUrl)
-      for (const candidate of [...declared, ...commonFeedPaths(friend.link)].slice(0, 4)) {
-        const res = await fetchRemote(c.env, { url: candidate, cfg, timeoutSeconds: cfg.crawl.timeoutSeconds, proxyMode: 'fallback' })
-        if (res.error || res.status !== 200) continue
-        try {
-          await withResolvedGuids(await parseFeed(res.body ?? ''))
-          out.feed = candidate
-          break
-        } catch { /* 下一个 */ }
-      }
-    }
-
-    const title = /<title[^>]*>([^<]{1,300})<\/title>/i.exec(home.body)?.[1]?.trim()
-    const ogSite = /<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']{1,300})["']/i.exec(home.body)?.[1]
-    if (ogSite || title) out.title = (ogSite ?? title)!
-
-    const iconHref = /<link[^>]+rel=["'][^"']*icon[^"']*["'][^>]*>/i.exec(home.body)?.[0]
-    const iconUrl = iconHref ? /\bhref\s*=\s*["']([^"']+)["']/i.exec(iconHref)?.[1] : undefined
-    if (iconUrl) {
-      try {
-        out.icon = new URL(iconUrl, home.finalUrl).toString()
-      } catch { /* 忽略非法 */ }
-    } else {
-      try {
-        const favicon = new URL('/favicon.ico', home.finalUrl).toString()
-        const res = await fetchRemote(c.env, { url: favicon, cfg, timeoutSeconds: Math.min(5, cfg.crawl.timeoutSeconds), proxyMode: 'fallback' })
-        if (res.status < 400) out.icon = favicon
-      } catch { /* 忽略 */ }
-    }
-
-    const ogImage = /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']{1,1000})["']/i.exec(home.body)?.[1]
-      ?? /<meta[^>]+content=["']([^"']{1,1000})["'][^>]+property=["']og:image["']/i.exec(home.body)?.[1]
-    if (ogImage) {
-      try {
-        out.avatar = new URL(ogImage, home.finalUrl).toString()
-      } catch { /* 忽略非法 */ }
-    }
-
-    return c.json({ probe: out })
+    const probe = await runProbe(c.env, cfg, { link: friend.link, feed: friend.feed })
+    if ('error' in probe) return jsonError(502, 'probe_unreachable', probe.error)
+    return c.json({ probe })
   })
 
   return app
@@ -245,42 +206,73 @@ async function countActive(c: Context<AppEnv>): Promise<number> {
   return row?.n ?? 0
 }
 
-/** 全量体检：三路 + 反链，写回 source_state */
-export async function runHealthRound(env: AppEnv['Bindings'], cfg: AppConfig): Promise<void> {
-  const db = env.DB
-  const friends = await db
-    .prepare('SELECT id, author, link, feed, in_circle FROM friends WHERE status = ? ORDER BY id')
-    .bind('active')
-    .all<{ id: number; author: string; link: string; feed: string | null; in_circle: number }>()
-  const states = await db
-    .prepare(
-      `SELECT friend_id, unreachable_since, rss_unavailable_since, fail_count
-         FROM source_state WHERE friend_id IN (${friends.results.map(() => '?').join(',') || 'NULL'})`,
-    )
-    .bind(...friends.results.map((f) => f.id))
-    .all<{ friend_id: number; unreachable_since: string | null; rss_unavailable_since: string | null; fail_count: number }>()
-    .catch(() => ({ results: [] as { friend_id: number; unreachable_since: string | null; rss_unavailable_since: string | null; fail_count: number }[] }))
-  const stateById = new Map(states.results.map((s) => [s.friend_id, s]))
+/** 自动探测：feed 发现（声明式 <link> 优先 + 常见路径）、站点标题、favicon、og:image */
+export async function runProbe(
+  env: AppEnv['Bindings'],
+  cfg: AppConfig,
+  input: { link: string; feed: string | null },
+): Promise<ProbeResult | { error: string }> {
+  const home = await fetchRemote(env, { url: input.link, cfg, timeoutSeconds: cfg.crawl.timeoutSeconds })
+  if (home.error || home.status >= 400 || home.body === null) {
+    return { error: home.error ?? `站点不可达（HTTP ${home.status}）` }
+  }
 
-  const startedAt = new Date().toISOString()
-  let done = 0
-  await runtimeSet(db, 'internal.round', { kind: 'health', startedAt, done: 0, total: friends.results.length })
+  const out: ProbeResult = {}
 
-  const queue = [...friends.results]
-  const workers = Array.from({ length: Math.min(cfg.linkCheck.concurrency, queue.length) }, async () => {
-    for (;;) {
-      const f = queue.shift()
-      if (!f) return
-      const friend: FriendRow = { id: f.id, author: f.author, link: f.link, feed: f.feed, in_circle: f.in_circle }
+  // feed：已有可用 feed 则不重复发现；缺失或不可用时尝试发现
+  let needDiscovery = input.feed === null
+  if (input.feed) {
+    const res = await fetchRemote(env, { url: input.feed, cfg, timeoutSeconds: cfg.crawl.timeoutSeconds })
+    if (res.error || res.status !== 200) {
+      needDiscovery = true
+    } else {
       try {
-        const result = await checkFriendHealth(env, cfg, friend)
-        await persistHealth(db, cfg, friend.id, result, stateById.get(friend.id) ?? null)
-      } catch (e) {
-        console.error(`[health] friend ${f.id} unhandled:`, e)
+        await parseFeed(res.body ?? '')
+      } catch {
+        needDiscovery = true
       }
-      done++
-      await runtimeSet(db, 'internal.round', { kind: 'health', startedAt, done, total: friends.results.length })
     }
-  })
-  await Promise.all(workers)
+  }
+  if (needDiscovery) {
+    const declared = extractDeclaredFeeds(home.body, home.finalUrl)
+    const candidates = [...declared, ...commonFeedPaths(input.link)].filter((c) => c !== input.feed).slice(0, 5)
+    for (const candidate of candidates) {
+      const res = await fetchRemote(env, { url: candidate, cfg, timeoutSeconds: cfg.crawl.timeoutSeconds })
+      if (res.error || res.status !== 200) continue
+      try {
+        await parseFeed(res.body ?? '')
+        out.feed = candidate
+        break
+      } catch { /* 下一个候选 */ }
+    }
+  }
+
+  const title = /<title[^>]*>([^<]{1,300})<\/title>/i.exec(home.body)?.[1]?.trim()
+  const ogSite = /<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']{1,300})["']/i.exec(home.body)?.[1]
+  if (ogSite || title) out.title = (ogSite ?? title)!
+
+  const iconHref = /<link[^>]+rel=["'][^"']*icon[^"']*["'][^>]*>/i.exec(home.body)?.[0]
+  const iconUrl = iconHref ? /\bhref\s*=\s*["']([^"']+)["']/i.exec(iconHref)?.[1] : undefined
+  if (iconUrl) {
+    try {
+      out.icon = new URL(iconUrl, home.finalUrl).toString()
+    } catch { /* 忽略非法 */ }
+  } else {
+    try {
+      const favicon = new URL('/favicon.ico', home.finalUrl).toString()
+      const res = await fetchRemote(env, { url: favicon, cfg, timeoutSeconds: Math.min(5, cfg.crawl.timeoutSeconds) })
+      if (res.status < 400) out.icon = favicon
+    } catch { /* 忽略 */ }
+  }
+
+  const ogImage =
+    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']{1,1000})["']/i.exec(home.body)?.[1] ??
+    /<meta[^>]+content=["']([^"']{1,1000})["'][^>]+property=["']og:image["']/i.exec(home.body)?.[1]
+  if (ogImage) {
+    try {
+      out.avatar = new URL(ogImage, home.finalUrl).toString()
+    } catch { /* 忽略非法 */ }
+  }
+
+  return out
 }

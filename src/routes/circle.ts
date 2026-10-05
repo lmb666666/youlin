@@ -21,10 +21,10 @@ export function publicCircleRoute() {
 
     const statsRow = await c.env.DB.prepare(
       `SELECT
+         (SELECT COUNT(*) FROM friends f
+            WHERE ${participating}) AS friends,
          (SELECT COUNT(*) FROM friends f LEFT JOIN source_state s ON s.friend_id = f.id
-            WHERE ${participating} AND s.crawlable = 1) AS friends,
-         (SELECT COUNT(*) FROM friends f LEFT JOIN source_state s ON s.friend_id = f.id
-            WHERE ${participating} AND (s.reachable = 0 OR s.crawlable IS NULL OR s.crawlable = 0)) AS failed,
+            WHERE ${participating} AND (s.reachable = 0 OR s.crawlable = 0)) AS failed,
          (SELECT COUNT(DISTINCT a.friend_id) FROM articles a JOIN friends f ON f.id = a.friend_id
             WHERE ${gate}) AS active,
          (SELECT COUNT(*) FROM articles a JOIN friends f ON f.id = a.friend_id

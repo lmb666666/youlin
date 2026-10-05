@@ -138,15 +138,16 @@ function normalizeAtomEntry(raw: unknown): ParsedEntry | null {
 function normalizeRssItem(raw: unknown): ParsedEntry | null {
   const e = raw as Record<string, unknown>
   const title = text(e.title)
-  const link = text(e.link) ?? atomLink(e['atom:link']) ?? text(e.guid)
+  // guid 兜底仅在它本身是 http(s) 链接时才用（否则会把 "tag:…" 之类写进 link，破坏契约）
+  const guidText = text(e.guid)
+  const link = text(e.link) ?? atomLink(e['atom:link']) ?? (guidText && /^https?:\/\//.test(guidText) ? guidText : null)
   if (!title || !link) return null
   // RSS 时间字段各家写法不一：pubDate / dc:date / published / updated
   const publishedAt =
     toIso(e.pubDate) ?? toIso(e['dc:date']) ?? toIso(e.published) ?? toIso(e.updated) ?? toIso(e['atom:updated'])
   if (!publishedAt) return null
-  const guid = text(e.guid)
   const author = entryAuthor(e['dc:creator']) ?? entryAuthor(e.author)
-  return { guid: guid ?? '', title, link, author, publishedAt }
+  return { guid: guidText ?? '', title, link, author, publishedAt }
 }
 
 /** guid 缺失时用 link 的 sha1 兜底（DESIGN §3 去重键规则） */

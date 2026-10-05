@@ -6,7 +6,7 @@ import {
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
-import { GripVertical, Pencil, Plus, EyeOff, Eye, Trash2, TriangleAlert, FolderPen, ArrowUp, ArrowDown } from 'lucide-react'
+import { GripVertical, Pencil, Plus, EyeOff, Eye, Trash2, TriangleAlert, FolderPen, ArrowUp, ArrowDown, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -58,6 +58,7 @@ function FriendDialog(props: {
   const { groups, editing, presetGroupId, open, onOpenChange, onSaved } = props
   const [values, setValues] = useState<FriendFormValues | null>(null)
   const [busy, setBusy] = useState(false)
+  const [probing, setProbing] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -90,6 +91,34 @@ function FriendDialog(props: {
 
   function set<K extends keyof FriendFormValues>(key: K, value: FriendFormValues[K]) {
     setValues((v) => (v ? { ...v, [key]: value } : v))
+  }
+
+  // 自动探测：发现 RSS、抓 favicon、站点标题、og:image 头像建议（空字段才回填，不覆盖已填内容）
+  async function probe() {
+    if (!values || probing || !/^https?:\/\//.test(values.link)) {
+      if (values && !/^https?:\/\//.test(values.link)) toast.info('请先填写站点链接（http/https）')
+      return
+    }
+    setProbing(true)
+    try {
+      const res = await api<{ probe: { feed?: string; title?: string; icon?: string; avatar?: string } }>(
+        '/api/admin/friends/probe',
+        { method: 'POST', body: JSON.stringify({ link: values.link, feed: values.feed || null }) },
+      )
+      const p = res.probe
+      let filled = 0
+      if (p.feed && !values.feed) { set('feed', p.feed); filled++ }
+      if (p.title && !values.title) { set('title', p.title); filled++ }
+      if (p.icon && !values.icon) { set('icon', p.icon); filled++ }
+      if (p.avatar && !values.avatar) { set('avatar', p.avatar); filled++ }
+      if (filled > 0) toast.success(`探测完成，已回填 ${filled} 项`)
+      else if (p.feed || p.title || p.icon || p.avatar) toast.info('探测到的内容与现有字段相同，未改动')
+      else toast.info('未探测到可回填的信息')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '探测失败')
+    } finally {
+      setProbing(false)
+    }
   }
 
   async function submit() {
@@ -207,11 +236,16 @@ function FriendDialog(props: {
             </label>
           </div>
         )}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-          <Button onClick={() => void submit()} disabled={busy || !values?.author || !values?.link || !values?.since}>
-            {busy ? '保存中…' : '保存'}
+        <DialogFooter className="items-center sm:justify-between">
+          <Button variant="outline" onClick={() => void probe()} disabled={probing || !values?.link} className="mr-auto">
+            <Sparkles /> {probing ? '探测中…' : '自动探测'}
           </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+            <Button onClick={() => void submit()} disabled={busy || !values?.author || !values?.link || !values?.since}>
+              {busy ? '保存中…' : '保存'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
