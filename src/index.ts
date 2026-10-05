@@ -1,6 +1,7 @@
 import { Hono, type MiddlewareHandler } from 'hono'
 import type { AppEnv, Env } from './types'
 import { loadConfig } from './config/loader'
+import { isMissingTableError } from './util/http'
 import { publicRoutes } from './routes/links'
 import { publicCircleRoute } from './routes/circle'
 import { applyRoutes } from './routes/apply'
@@ -28,6 +29,19 @@ app.route('/', adminRoutes())
 app.notFound((c) => c.json({ error: { code: 'not_found', message: '接口不存在' } }, 404))
 
 app.onError((err, c) => {
+  const msg = err instanceof Error ? err.message : String(err)
+  // 一键部署常见首因：Worker 已上线但 D1 迁移尚未执行 → 给出可操作的指引而不是裸 500
+  if (isMissingTableError(msg)) {
+    return c.json(
+      {
+        error: {
+          code: 'database_not_migrated',
+          message: '数据库尚未初始化：请运行 `wrangler d1 migrations apply DB --remote`，或在 Workers Builds 中将部署命令设为 `npm run deploy` 后重新部署',
+        },
+      },
+      503,
+    )
+  }
   console.error('[youlin] unhandled error:', err instanceof Error ? err.stack : err)
   return c.json({ error: { code: 'internal', message: '服务器内部错误' } }, 500)
 })

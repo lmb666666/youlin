@@ -3,13 +3,6 @@ import { z } from 'zod'
 import { jsonError, fieldDetails, readJson } from '../../util/http'
 import type { AppEnv } from '../../types'
 
-interface GroupRow {
-  id: number
-  name: string
-  desc: string | null
-  sort: number
-}
-
 export function groupRoutes() {
   const app = new Hono<AppEnv>()
 

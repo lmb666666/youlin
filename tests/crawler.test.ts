@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { env } from './helpers'
 import { nextIntervalHours } from '../src/crawler/http'
-import { crawlSource, dailyCleanup, runCronTick, type FriendRow } from '../src/crawler/crawl'
+import { crawlSource, dailyCleanup, runCronTick } from '../src/crawler/crawl'
 import { loadConfig } from '../src/config/loader'
 import type { AppConfig } from '../src/types'
 
-function rssXml(items: { title: string; link: string; pubDate: string; guid?: string }[], etag?: string): string {
+function rssXml(items: { title: string; link: string; pubDate: string; guid?: string }[]): string {
   return `<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>${items
     .map(
       (i) =>

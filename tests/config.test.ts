@@ -3,6 +3,7 @@ import { env } from './helpers'
 import { CONFIG_FIELDS, CONFIG_KEYS, CONFIG_TOP_KEYS } from '../src/config/definition'
 import { settingsZod, settingsSchemaPayload, fieldSchemas, toNested } from '../src/config/schema'
 import { loadFlatSettings, defaultsFlat } from '../src/config/loader'
+import { isMissingTableError } from '../src/util/http'
 import type { AppConfig } from '../src/types'
 
 beforeEach(async () => {
@@ -43,6 +44,15 @@ describe('配置定义（DESIGN §9 完整性）', () => {
     const schemaKeys = payload.groups.flatMap((g) => g.fields.map((f) => f.key))
     expect([...schemaKeys].sort()).toEqual([...CONFIG_KEYS].sort())
     expect(payload.version).toBe(1)
+  })
+})
+
+describe('数据库未迁移检测', () => {
+  it('识别 D1 的「表不存在」错误，供友好提示', () => {
+    expect(isMissingTableError('D1_ERROR: no such table: groups: SQLITE_ERROR')).toBe(true)
+    expect(isMissingTableError('D1_ERROR: no such column: foo: SQLITE_ERROR')).toBe(true)
+    expect(isMissingTableError('D1_ERROR: UNIQUE constraint failed: friends.link')).toBe(false)
+    expect(isMissingTableError('Network connection lost')).toBe(false)
   })
 })
 

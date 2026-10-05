@@ -1,5 +1,5 @@
 import type { Context, MiddlewareHandler } from 'hono'
-import { getCookie, setCookie } from 'hono/cookie'
+import { getCookie } from 'hono/cookie'
 import type { AppEnv } from './types'
 
 /**
@@ -87,10 +87,6 @@ export function cookieOptions(c: Context, maxAgeSeconds: number) {
 // ── 登录限流（security.loginRateLimit 次/小时，按 IP）──────────────────────
 // v1 用 isolate 内存滑动窗：免费版多 isolate 时各算各的，放宽而非收紧，可接受（见 DECISIONS）。
 const loginHits = new Map<string, number[]>()
-
-function clientIp(c: Context): string {
-  return c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? 'local'
-}
 
 export function loginAllowed(ip: string, limitPerHour: number, now = Date.now()): boolean {
   const windowStart = now - 3_600_000

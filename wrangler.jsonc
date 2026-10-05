@@ -22,7 +22,9 @@
       "database_name": "youlin",
       // 占位符：Deploy to Cloudflare 按钮会自动创建 D1 并回填此 ID；
       // CLI 部署则用 `wrangler d1 create youlin` 返回的 ID 替换。
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      // 迁移目录（默认值，显式声明便于部署按钮/CI 识别）
+      "migrations_dir": "migrations"
     }
   ],
 

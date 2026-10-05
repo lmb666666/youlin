@@ -1,4 +1,4 @@
-import { Hono, type Context } from 'hono'
+import { Hono } from 'hono'
 import { requireAdmin } from '../../auth'
 import type { AppEnv } from '../../types'
 import { loginRoutes } from './login'

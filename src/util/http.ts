@@ -14,6 +14,11 @@ export function fieldDetails(issues: { path: (string | number | symbol)[]; messa
   return out
 }
 
+/** D1 报错是否为「表未迁移」（一键部署后未跑迁移的典型首因） */
+export function isMissingTableError(message: string): boolean {
+  return /no such table|no such column/i.test(message)
+}
+
 /** 解析请求体 JSON；失败返回 undefined 并已写响应 */
 export async function readJson(c: Context): Promise<unknown | undefined> {
   try {
