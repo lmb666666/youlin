@@ -68,6 +68,19 @@ const columns = [
       return v < 0 ? '—' : `${(v / 1000).toFixed(2)}s`
     },
   }),
+  col.accessor((r) => r.state?.finalUrl ?? null, {
+    id: 'finalUrl',
+    header: '最终域名',
+    cell: (c) => {
+      const v = c.getValue()
+      if (!v) return '—'
+      return (
+        <a href={v} target="_blank" rel="noopener noreferrer" className="block max-w-44 truncate text-xs hover:underline" title={v}>
+          {v}
+        </a>
+      )
+    },
+  }),
   col.accessor((r) => r.state?.lastPostDaysAgo ?? null, {
     id: 'stale',
     header: '最近发文',
@@ -93,13 +106,13 @@ function toCsv(friends: HealthFriend[]): string {
     const s = v === null || v === undefined ? '' : String(v)
     return `"${s.replaceAll('"', '""')}"`
   }
-  const header = ['作者', '链接', 'feed', '可达', '可抓取', '反链', '延迟ms', 'HTTP状态', '失联起始', 'RSS不可用起始', '最近发文', '距今天数', '失败次数', '最后错误', '最后检查', '下次检查']
+  const header = ['作者', '链接', 'feed', '可达', '可抓取', '反链', '延迟ms', 'HTTP状态', '最终域名', '失联起始', 'RSS不可用起始', '最近发文', '距今天数', '失败次数', '最后错误', '最后检查', '下次检查']
   const lines = friends.map((f) => {
     const s = f.state
     return [
       f.author, f.link, f.feed ?? '', s?.reachable ?? '', s?.crawlable ?? '',
       s?.backlinkChecked ? (s.backlink ? '是' : '否') : '未检测',
-      s?.latencyMs ?? '', s?.httpStatus ?? '',
+      s?.latencyMs ?? '', s?.httpStatus ?? '', s?.finalUrl ?? '',
       s?.unreachableSince ?? '', s?.rssUnavailableSince ?? '',
       s?.lastPostPublished ?? '', s?.lastPostDaysAgo ?? '',
       s?.failCount ?? 0, s?.lastError ?? '', s?.checkedAt ?? '', s?.nextCheckAt ?? '',

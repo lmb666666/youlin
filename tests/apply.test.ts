@@ -78,6 +78,19 @@ describe('接口三 GET /apply（申请页）', () => {
     expect(html).toContain('challenges.cloudflare.com/turnstile/v0/api.js')
   })
 
+  it('文案注入加固：successMessage 含 </script> 时被转义，accentColor 白名单过滤', async () => {
+    await setSettings({
+      'apply.successMessage': '提交成功</script><script>alert(1)</script>',
+      'ui.accentColor': '#ff0000;} body{display:none',
+    })
+    const html = await (await SELF.fetch(`${BASE}/apply`)).text()
+    expect(html).not.toContain('</script><script>alert(1)')
+    expect(html).toContain('\\u003c/script>')
+    // 样式注入被过滤
+    expect(html).not.toContain('display:none')
+    expect(html).toContain('--accent:#ff0000')
+  })
+
   it('POST 预检（OPTIONS）返回 CORS 头', async () => {
     const res = await SELF.fetch(`${BASE}/apply`, { method: 'OPTIONS' })
     expect(res.status).toBe(204)

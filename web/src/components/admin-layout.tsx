@@ -29,6 +29,18 @@ export function AdminLayout() {
     api('/api/admin/me')
       .then(() => setChecked(true))
       .catch(() => {})
+    // ui.accentColor（DESIGN §9.7）：覆盖 shadcn 主色 CSS 变量
+    api<{ values: Record<string, unknown> }>('/api/admin/settings')
+      .then(({ values }) => {
+        const accent = values['ui.accentColor']
+        if (typeof accent === 'string' && accent.trim() !== '') {
+          const root = document.documentElement
+          root.style.setProperty('--primary', accent)
+          root.style.setProperty('--ring', accent)
+          root.style.setProperty('--sidebar-primary', accent)
+        }
+      })
+      .catch(() => {})
   }, [])
 
   if (!checked) return null

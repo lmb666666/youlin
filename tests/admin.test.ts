@@ -319,12 +319,15 @@ describe('设置中心', () => {
 })
 
 describe('导出', () => {
-  it('JSON 全量导出含管理字段；不支持的格式返回 400', async () => {
+  it('JSON 全量导出含管理字段；CSV/OPML 格式正确；未知格式 400', async () => {
     const g = await authed('/api/admin/groups', { method: 'POST', body: JSON.stringify({ name: '导出组' }) })
     const { id: gid } = (await g.json()) as { id: number }
     await authed('/api/admin/friends', {
       method: 'POST',
-      body: JSON.stringify({ groupId: gid, author: 'X', link: 'https://x.example.com/', since: '2026-03-03', status: 'hidden', nickname: '小站' }),
+      body: JSON.stringify({
+        groupId: gid, author: 'X', link: 'https://x.example.com/', since: '2026-03-03',
+        status: 'hidden', nickname: '小站', feed: 'https://x.example.com/feed.xml', archs: ['Nuxt'],
+      }),
     })
     const res = await authed('/api/admin/export')
     const body = (await res.json()) as { exportedAt: string; groups: { name: string; links: Record<string, unknown>[] }[] }
@@ -333,6 +336,24 @@ describe('导出', () => {
     expect(link).toMatchObject({ author: 'X', status: 'hidden', nickname: '小站', inCircle: true })
 
     const csv = await authed('/api/admin/export?format=csv')
-    expect(csv.status).toBe(400)
+    expect(csv.status).toBe(200)
+    expect(csv.headers.get('content-type')).toContain('text/csv')
+    expect(csv.headers.get('content-disposition')).toContain('.csv')
+    const bom = new Uint8Array(await csv.arrayBuffer())
+    expect([bom[0], bom[1], bom[2]]).toEqual([0xef, 0xbb, 0xbf]) // UTF-8 BOM（Excel 友好）
+    const csvText = new TextDecoder().decode(bom)
+    expect(csvText).toContain('"导出组"')
+    expect(csvText).toContain('"隐藏"')
+    expect(csvText).toContain('"Nuxt"')
+
+    const opml = await authed('/api/admin/export?format=opml')
+    expect(opml.status).toBe(200)
+    expect(opml.headers.get('content-type')).toContain('opml')
+    const opmlText = await opml.text()
+    expect(opmlText).toContain('<opml version="2.0">')
+    expect(opmlText).toContain('xmlUrl="https://x.example.com/feed.xml"')
+
+    const bogus = await authed('/api/admin/export?format=xml')
+    expect(bogus.status).toBe(400)
   })
 })

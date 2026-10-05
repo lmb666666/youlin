@@ -105,6 +105,3 @@ export async function runtimeSet(db: Env['DB'], key: string, value: unknown): Pr
     .run()
 }
 
-export async function runtimeDel(db: Env['DB'], key: string): Promise<void> {
-  await db.prepare('DELETE FROM settings WHERE key = ?').bind(key).run()
-}

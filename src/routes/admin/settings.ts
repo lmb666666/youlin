@@ -64,7 +64,7 @@ export function settingsRoutes() {
     }
     const entries = Object.entries(parsed.data)
     await c.env.DB.batch([
-      c.env.DB.prepare('DELETE FROM settings WHERE key != ?').bind('settings.schemaVersion'),
+      c.env.DB.prepare("DELETE FROM settings WHERE key != ? AND key NOT LIKE 'internal.%'").bind('settings.schemaVersion'),
       ...entries.map(([k, v]) =>
         c.env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
           .bind(k, JSON.stringify(v)),

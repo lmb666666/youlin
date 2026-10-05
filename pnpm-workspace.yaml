@@ -7,4 +7,3 @@ minimumReleaseAgeExclude:
 onlyBuiltDependencies:
   - esbuild
   - workerd
-dangerouslyAllowAllBuilds: true

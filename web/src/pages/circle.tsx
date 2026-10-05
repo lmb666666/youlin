@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Newspaper, Play, RefreshCw, Rss, Trash2 } from 'lucide-react'
+import { Hammer, Newspaper, Play, RefreshCw, Rss, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,18 +20,22 @@ export default function CirclePage() {
   const [articles, setArticles] = useState<ArticleRow[]>([])
   const [busy, setBusy] = useState(false)
   const [singleBusy, setSingleBusy] = useState<number | null>(null)
+  const [rebuildEnabled, setRebuildEnabled] = useState(false)
+  const [rebuildBusy, setRebuildBusy] = useState(false)
   const pollRef = useRef<number | null>(null)
 
   const reload = useCallback(async () => {
     try {
-      const [h, s, a] = await Promise.all([
+      const [h, s, a, cfg] = await Promise.all([
         api<{ friends: HealthFriend[] }>('/api/admin/health'),
         api<CrawlStatus>('/api/admin/crawl/status'),
         api<{ articles: ArticleRow[] }>('/api/admin/articles'),
+        api<{ values: Record<string, unknown> }>('/api/admin/settings'),
       ])
       setFriends(h.friends)
       setStatus(s)
       setArticles(a.articles.slice(0, 20))
+      setRebuildEnabled(cfg.values['rebuild.enabled'] === true)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '加载失败')
     }
@@ -83,6 +87,19 @@ export default function CirclePage() {
     }
   }
 
+  async function triggerRebuild() {
+    if (rebuildBusy) return
+    setRebuildBusy(true)
+    try {
+      const r = await api<{ ok: boolean; provider: string }>('/api/admin/rebuild', { method: 'POST', body: JSON.stringify({ reason: 'manual' }) })
+      toast.success(`已触发重建（${r.provider}）`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '触发失败')
+    } finally {
+      setRebuildBusy(false)
+    }
+  }
+
   async function crawlOne(id: number) {
     if (singleBusy !== null) return
     setSingleBusy(id)
@@ -117,7 +134,7 @@ export default function CirclePage() {
     )
   }
 
-  const sources = friends.filter((f) => f.status === 'active' && f.feed)
+  const sources = friends.filter((f) => f.status === 'active' && f.inCircle && f.feed)
   const progress = status.round && status.round.total > 0 ? Math.round((status.round.done / status.round.total) * 100) : 0
 
   return (
@@ -129,9 +146,16 @@ export default function CirclePage() {
             Cron 每 5 分钟轮转一批（默认 3 站）；{status.dueCount}/{status.activeCount} 个源等待检查。
           </p>
         </div>
-        <Button onClick={() => void triggerCrawl()} disabled={busy || status.running}>
-          <Play /> {status.running ? '抓取进行中…' : '手动抓取一轮'}
-        </Button>
+        <div className="flex gap-2">
+          {rebuildEnabled && (
+            <Button variant="outline" onClick={() => void triggerRebuild()} disabled={rebuildBusy}>
+              <Hammer /> {rebuildBusy ? '触发中…' : '重建站点'}
+            </Button>
+          )}
+          <Button onClick={() => void triggerCrawl()} disabled={busy || status.running}>
+            <Play /> {status.running ? '抓取进行中…' : '手动抓取一轮'}
+          </Button>
+        </div>
       </div>
 
       {status.running && status.round && (

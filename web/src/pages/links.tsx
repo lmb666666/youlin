@@ -6,7 +6,7 @@ import {
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
-import { GripVertical, Pencil, Plus, EyeOff, Eye, Trash2, TriangleAlert, FolderPen, ArrowUp, ArrowDown, Sparkles } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripVertical, Pencil, Plus, EyeOff, Eye, Trash2, TriangleAlert, FolderPen, ArrowUp, ArrowDown, Sparkles, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -413,6 +413,8 @@ export default function LinksPage() {
   const [groupDialog, setGroupDialog] = useState<{ open: boolean; editing: Group | null }>({ open: false, editing: null })
   const [deleteTarget, setDeleteTarget] = useState<{ kind: 'friend' | 'group'; id: number; name: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [query, setQuery] = useState('')
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -433,15 +435,34 @@ export default function LinksPage() {
     void reload()
   }, [reload])
 
+  const q = query.trim().toLowerCase()
+  const searching = q !== ''
+  const matches = useCallback(
+    (f: Friend) =>
+      !searching ||
+      [f.author, f.nickname, f.title, f.link, f.desc].some((v) => v?.toLowerCase().includes(q)),
+    [q, searching],
+  )
+
   const friendsOf = useMemo(() => {
     const map = new Map<number, Friend[]>()
     for (const f of friends) {
+      if (!matches(f)) continue
       const list = map.get(f.groupId) ?? []
       list.push(f)
       map.set(f.groupId, list)
     }
     return map
-  }, [friends])
+  }, [friends, matches])
+
+  function toggleCollapsed(id: number) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   async function handleDragEnd(groupId: number, event: DragEndEvent) {
     const { active, over } = event
@@ -528,7 +549,16 @@ export default function LinksPage() {
           <h1 className="text-lg font-semibold">友链</h1>
           <p className="text-sm text-muted-foreground">拖拽排序；改动保存后接口即时生效。</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索作者 / 链接 / 标题"
+              className="h-9 w-52 pl-8"
+            />
+          </div>
           <Button variant="outline" onClick={() => setGroupDialog({ open: true, editing: null })}>
             <Plus /> 新建分组
           </Button>
@@ -552,10 +582,18 @@ export default function LinksPage() {
 
       {groups.map((g, gi) => {
         const rows = friendsOf.get(g.id) ?? []
+        const isCollapsed = !searching && collapsed.has(g.id)
         return (
           <Card key={g.id}>
             <CardHeader className="flex-row items-center justify-between space-y-0">
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => toggleCollapsed(g.id)}
+                  className="text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label={isCollapsed ? '展开分组' : '折叠分组'}
+                >
+                  {isCollapsed ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
+                </button>
                 <CardTitle className="text-base">{g.name}</CardTitle>
                 <Badge variant="secondary">{rows.length}</Badge>
                 {g.desc && <span className="hidden text-sm text-muted-foreground md:inline">{g.desc}</span>}
@@ -586,8 +624,10 @@ export default function LinksPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {rows.length === 0 ? (
-                <p className="py-4 text-center text-sm text-muted-foreground">分组为空</p>
+              {isCollapsed ? null : rows.length === 0 ? (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  {searching ? '没有匹配的友链' : '分组为空'}
+                </p>
               ) : (
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => void handleDragEnd(g.id, e)}>
                   <SortableContext items={rows.map((r) => r.id)} strategy={verticalListSortingStrategy}>

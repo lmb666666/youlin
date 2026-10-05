@@ -13,6 +13,17 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+/** 嵌入 <script> 的 JSON：转义 < 防 </script> 逃逸 */
+function jsonForScript(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c')
+}
+
+/** CSS 颜色值白名单过滤（防样式块注入） */
+function cssColor(value: string): string {
+  const cleaned = value.trim().replace(/[^a-zA-Z0-9#%.,()\s/-]/g, '')
+  return cleaned.length <= 64 ? cleaned : ''
+}
+
 interface FieldSpec {
   name: string
   label: string
@@ -45,6 +56,7 @@ export function renderApplyPage(cfg: AppConfig): string {
   const turnstileReady = turnstileEnabled && siteKey !== ''
   const siteUrl = cfg.site.url || ''
   const logo = cfg.site.logo
+  const accent = cssColor(cfg.ui.accentColor)
 
   const fieldHtml = FIELDS.map((f) => {
     const isRequired = required.has(f.name)
@@ -86,7 +98,7 @@ ${turnstileBlock}
 <title>友链申请 · ${siteName}</title>
 ${turnstileScript}
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--text:#18181b;--muted:#71717a;--border:#e4e4e7;--accent:#18181b;--accent-fg:#fafafa;--err:#dc2626;--ok:#16a34a}
+:root{${accent ? `--accent:${accent};` : ''}--bg:#f6f7f9;--card:#fff;--text:#18181b;--muted:#71717a;--border:#e4e4e7;--accent:#18181b;--accent-fg:#fafafa;--err:#dc2626;--ok:#16a34a}
 @media (prefers-color-scheme:dark){:root{--bg:#0a0a0a;--card:#18181b;--text:#fafafa;--muted:#a1a1aa;--border:#27272a;--accent:#fafafa;--accent-fg:#18181b;--err:#f87171;--ok:#4ade80}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 ui-sans-serif,system-ui,"PingFang SC","Microsoft YaHei",sans-serif;display:flex;justify-content:center;padding:32px 16px}
@@ -128,7 +140,7 @@ ${siteUrl ? `<p class="foot">← 返回 <a href="${esc(siteUrl)}">${siteName}</a
   var btn = document.getElementById('submit-btn');
   var result = document.getElementById('result');
   function show(kind, text){ result.className = 'result ' + kind; result.textContent = text; result.hidden = false; }
-  var FIELD_LABELS = ${JSON.stringify(Object.fromEntries(FIELDS.map((f) => [f.name, f.label])))};
+  var FIELD_LABELS = ${jsonForScript(Object.fromEntries(FIELDS.map((f) => [f.name, f.label])))};
   form.addEventListener('submit', async function(e){
     e.preventDefault();
     var data = {};
@@ -140,7 +152,7 @@ ${siteUrl ? `<p class="foot">← 返回 <a href="${esc(siteUrl)}">${siteName}</a
       var res = await fetch('/apply', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
       var payload = await res.json().catch(function(){ return null; });
       if (res.ok) {
-        show('ok', ${JSON.stringify(success)} + (payload && payload.backlink && payload.backlink.ok ? '（已检测到你的站点有我们的链接，感谢！）' : ''));
+        show('ok', ${jsonForScript(success)} + (payload && payload.backlink && payload.backlink.ok ? '（已检测到你的站点有我们的链接，感谢！）' : ''));
         form.querySelectorAll('input,textarea').forEach(function(el){ el.value = ''; });
       } else {
         var msg = (payload && payload.error && payload.error.message) || ('提交失败（' + res.status + '）');
