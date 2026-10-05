@@ -4,25 +4,29 @@
 
 ## 前置条件
 
-- 一个 GitHub 账号（一键部署会用它存放你的一份仓库）
 - 一个 Cloudflare 账号（免费注册即可，无需绑卡）
+- 一个 GitHub 或 GitLab 账号（只支持 github.com / gitlab.com）
 - 自定义域名可选（`*.workers.dev` 免费子域开箱可用）
+
+一键部署全程在浏览器里完成，本地不需要安装 Node、pnpm 或 wrangler。
 
 ## 方式一：一键部署（推荐）
 
-1. **点按钮**：在 [README](../README.md) 顶部点击 **Deploy to Cloudflare**。
-2. **连接 Git 账号**：按提示连接 GitHub（或 GitLab），Cloudflare 会把仓库复制一份到你名下，并接上自动部署（之后每次 push 都会自动重新部署）。仓库本来就在你账号里的话（比如部署自己的仓库），「创建专用 Git 存储库」不用勾。
-3. **填写配置**：`ADMIN_TOKEN` 是管理台登录口令，用下面的命令生成一个随机值；D1 数据库名保持默认即可。
+1. **点按钮**：在 [README](../README.md) 顶部点击 **Deploy to Cloudflare**。如果还没登录 Cloudflare，会先引导登录或注册。
+2. **连接 Git 账号**：在设置页的「Git 帐户」里点「新建 GitHub 连接」（或 GitLab），跳转授权后返回。Cloudflare 会把本仓库克隆一份到你的账号下（是副本，不是 fork）——这份副本就是你的仓库，之后的升级、部署自动触发都在它上面进行；按页面提示确认仓库名（默认 `youlin`，可改）。
+3. **填写配置**：`ADMIN_TOKEN` 是管理台登录口令（部署表单里那个必填项），用下面的命令生成一个随机值；D1 数据库名保持默认即可。
 
    ```bash
    openssl rand -hex 32
    ```
 
 4. **确认命令并开始部署**：构建命令 `pnpm run build` 与部署命令 `pnpm run deploy` 会按仓库内容自动填好，保持默认即可。部署命令里包含数据库迁移（`wrangler d1 migrations apply DB --remote`），建表会随首次部署自动完成，不需要手工执行。点击页面底部的创建按钮开始部署。
-5. **登录管理台**：打开 `https://<项目名>.<你的子域>.workers.dev/admin`，输入第 3 步的 `ADMIN_TOKEN`。
+
+   随后 Cloudflare 会自动完成：创建仓库副本 → 创建并绑定 D1 数据库 → 写入密钥 → 构建 → 部署（首次约 1–2 分钟）。
+5. **登录管理台**：打开 `https://<项目名>.<你的子域>.workers.dev/admin`，输入第 3 步的 `ADMIN_TOKEN`。全新 Cloudflare 账号首次使用 Workers 时，可能需要先确认一个 `*.workers.dev` 子域（就是地址里的那段）。
 6. **基础配置**：到「设置」页填写 `site.url`（你的主站地址，反链检测的默认目标）；到「导入」页可批量迁入现有友链数据。
 
-约 10 分钟可完成以上全部步骤。
+约 10 分钟可完成以上全部步骤。需要你自己决定的只有三件事：仓库名、管理口令、D1 名称（后两个保持默认也可以，口令建议随机）。
 
 > 部署表单里的「使用 Cloudflare Access 保护」保持关闭：它会连同对外的三个公开接口一起挡掉。想给管理台单独加一层保护的话，在 Cloudflare Zero Trust 里建一个限定 `/admin` 与 `/api/admin` 路径的 Access 应用即可。
 
