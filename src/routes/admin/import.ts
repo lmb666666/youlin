@@ -91,9 +91,12 @@ function normalizeItem(raw: unknown, fallbackGroup: string | null, index: number
     archs: pickArchs(item),
     since: dateOnly(pickString(item, ALIASES.since) ?? undefined) ?? dateOnly(new Date())!,
     comment: pickString(item, ALIASES.comment),
-    inCircle: item.inCircle === undefined ? true : Boolean(item.inCircle),
+    inCircle: item.inCircle === undefined || item.inCircle === null ? true : !FALSY.has(item.inCircle),
   }
 }
+
+/** 常见的"假"写法（"false"/"0"/0/false/null/""）都视为关闭，避免 Boolean("false")===true 陷阱 */
+const FALSY = new Set<unknown>([false, 0, '0', 'false', 'False', 'FALSE', null, ''])
 
 /** 把任意形状的导入 JSON 归一为条目流 */
 function collectItems(body: unknown): { raw: unknown[]; groupOf: (i: number) => string | null } {

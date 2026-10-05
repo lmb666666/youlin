@@ -95,8 +95,10 @@ export function groupRoutes() {
   app.delete('/api/admin/groups/:id', async (c) => {
     const id = Number(c.req.param('id'))
     if (!Number.isInteger(id)) return jsonError(400, 'invalid_id', 'id 不合法')
-    // 友链随之删除（分组下的友链与抓取状态、文章一起清掉）
+    // 友链及其文章/抓取状态随之删除（显式清理，不依赖外键级联）
     await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM articles WHERE friend_id IN (SELECT id FROM friends WHERE group_id = ?)').bind(id),
+      c.env.DB.prepare('DELETE FROM source_state WHERE friend_id IN (SELECT id FROM friends WHERE group_id = ?)').bind(id),
       c.env.DB.prepare('DELETE FROM friends WHERE group_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM groups WHERE id = ?').bind(id),
     ])

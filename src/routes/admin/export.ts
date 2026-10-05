@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { isoUtc } from '../../util/time'
 import type { AppEnv } from '../../types'
 
 /**
@@ -63,7 +64,7 @@ export function exportRoutes() {
         since: r.since,
         inCircle: r.in_circle === 1,
         status: r.status,
-        addedAt: r.created_at ? r.created_at.replace(' ', 'T') + 'Z' : undefined,
+        addedAt: isoUtc(r.created_at),
       }
       if (r.nickname) link.nickname = r.nickname
       if (r.title) link.title = r.title

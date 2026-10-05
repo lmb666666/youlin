@@ -41,11 +41,8 @@ const shape = Object.fromEntries(CONFIG_FIELDS.map((f) => [f.key, fieldZod(f)]))
 /** 按键取用的 zod 表（PUT /settings 只校验提交的键） */
 export const fieldSchemas = shape as Record<string, z.ZodType>
 
-/** 严格校验：未知键、类型不符都报错（管理台 PUT / settings import 用） */
+/** 严格校验：未知键、类型不符都报错（settings import 整表替换用） */
 export const settingsZod = z.object(shape).strict()
-
-/** 宽松校验：容忍未知键（YOULIN_CONFIG_OVERRIDES / 旧版本 settings 表内容），未知键剔除 */
-export const settingsZodLoose = z.object(shape)
 
 export type FlatSettings = Record<string, unknown>
 

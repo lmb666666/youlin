@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { setCookie, deleteCookie, getCookie } from 'hono/cookie'
+import { setCookie, deleteCookie } from 'hono/cookie'
 import { SESSION_COOKIE, cookieOptions, verifyAdminToken, loginAllowed, resetLoginHits, signSession } from '../../auth'
 import { jsonError } from '../../util/http'
 import type { AppEnv } from '../../types'
@@ -41,9 +41,7 @@ export function loginRoutes() {
   })
 
   app.get('/api/admin/me', (c) => {
-    // requireAdmin 已保证会话有效
-    const session = getCookie(c, SESSION_COOKIE) ?? ''
-    void session
+    // requireAdmin 中间件已验证会话，能到这里即已登录
     return c.json({ ok: true })
   })
 

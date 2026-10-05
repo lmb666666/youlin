@@ -39,7 +39,7 @@ export default function SettingsPage() {
     void reload()
   }, [reload])
 
-  const dirtyCount = useMemo(() => Object.keys(dirty).length, [dirty])
+  const sendable = useMemo(() => Object.entries(dirty).filter(([, v]) => v !== undefined), [dirty])
 
   function setField(key: string, value: unknown) {
     setValues((v) => (v ? { ...v, [key]: value } : v))
@@ -47,13 +47,16 @@ export default function SettingsPage() {
   }
 
   async function save() {
-    if (dirtyCount === 0 || busy) return
+    if (sendable.length === 0 || busy) return
     setBusy(true)
     try {
-      const res = await api<{ values: Values }>('/api/admin/settings', { method: 'PUT', body: JSON.stringify(dirty) })
+      const res = await api<{ values: Values }>('/api/admin/settings', {
+        method: 'PUT',
+        body: JSON.stringify(Object.fromEntries(sendable)),
+      })
       setValues(res.values)
       setDirty({})
-      toast.success(`已保存 ${dirtyCount} 项设置`)
+      toast.success(`已保存 ${sendable.length} 项设置`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '保存失败')
     } finally {
@@ -118,8 +121,8 @@ export default function SettingsPage() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-          <Button onClick={() => void save()} disabled={dirtyCount === 0 || busy}>
-            <Save /> 保存{dirtyCount > 0 ? `（${dirtyCount}）` : ''}
+          <Button onClick={() => void save()} disabled={sendable.length === 0 || busy}>
+            <Save /> 保存{sendable.length > 0 ? `（${sendable.length}）` : ''}
           </Button>
         </div>
       </div>
@@ -144,6 +147,38 @@ export default function SettingsPage() {
       </p>
     </div>
   )
+}
+
+/** JSON 字段编辑器：本地草稿态，避免输入过程中非法 JSON 触发回跳 */
+function JsonEditor({ value, className, onChange }: { value: unknown; className?: string; onChange: (v: unknown) => void }) {
+  const [raw, setRaw] = useState<string | null>(null)
+  const invalid = raw !== null && !jsonParses(raw)
+  return (
+    <Textarea
+      className={`font-mono text-xs ${className ?? ''} ${invalid ? 'border-destructive' : ''}`}
+      rows={3}
+      spellCheck={false}
+      value={raw ?? JSON.stringify(value ?? null)}
+      onChange={(e) => {
+        setRaw(e.target.value)
+        try {
+          onChange(JSON.parse(e.target.value) as unknown)
+        } catch {
+          // 非法 JSON 期间不更新父状态；失焦或改合法后恢复
+        }
+      }}
+      onBlur={() => setRaw(null)}
+    />
+  )
+}
+
+function jsonParses(text: string): boolean {
+  try {
+    JSON.parse(text)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function FieldControl(props: {
@@ -194,20 +229,7 @@ function FieldControl(props: {
           onChange={(e) => onChange(e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean))}
         />
       )}
-      {f.type === 'json' && (
-        <Textarea
-          className={`font-mono text-xs ${className ?? ''}`}
-          rows={3}
-          value={JSON.stringify(value ?? null)}
-          onChange={(e) => {
-            try {
-              onChange(JSON.parse(e.target.value) as unknown)
-            } catch {
-              // 输入过程中允许暂态非法 JSON，保存时统一校验
-            }
-          }}
-        />
-      )}
+      {f.type === 'json' && <JsonEditor value={value} className={className} onChange={onChange} />}
       {(f.type === 'string' || f.type === 'text') && (
         f.type === 'text'
           ? <Textarea className={className} rows={2} value={String(value ?? '')} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />

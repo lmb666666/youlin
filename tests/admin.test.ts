@@ -162,6 +162,31 @@ describe('分组与友链 CRUD', () => {
     expect(f2.find((x) => x.id === id)).toBeUndefined()
   })
 
+  it('删除分组清理文章与抓取状态（无孤儿行）', async () => {
+    const g = await authed('/api/admin/groups', { method: 'POST', body: JSON.stringify({ name: '待删除' }) })
+    const { id: gid } = (await g.json()) as { id: number }
+    const f = await authed('/api/admin/friends', {
+      method: 'POST',
+      body: JSON.stringify({ groupId: gid, author: 'Orphan', link: 'https://orphan.example.com/', since: '2026-01-01' }),
+    })
+    const { id: fid } = (await f.json()) as { id: number }
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO articles (friend_id, guid, title, link, published_at) VALUES (?, 'g1', 't', 'https://orphan.example.com/p1', '2026-01-01T00:00:00Z')").bind(fid),
+      env.DB.prepare("INSERT INTO source_state (friend_id, reachable, checked_at) VALUES (?, 1, datetime('now'))").bind(fid),
+    ])
+
+    const del = await authed(`/api/admin/groups/${gid}`, { method: 'DELETE' })
+    expect(del.status).toBe(200)
+
+    const counts = await env.DB.prepare(
+      `SELECT (SELECT COUNT(*) FROM groups WHERE id = ${gid}) AS g,
+              (SELECT COUNT(*) FROM friends WHERE id = ${fid}) AS f,
+              (SELECT COUNT(*) FROM articles WHERE friend_id = ${fid}) AS a,
+              (SELECT COUNT(*) FROM source_state WHERE friend_id = ${fid}) AS s`,
+    ).first<{ g: number; f: number; a: number; s: number }>()
+    expect(counts).toEqual({ g: 0, f: 0, a: 0, s: 0 })
+  })
+
   it('拖拽排序 reorder 生效并反映在接口一顺序', async () => {
     const g = await authed('/api/admin/groups', { method: 'POST', body: JSON.stringify({ name: '排序' }) })
     const { id: gid } = (await g.json()) as { id: number }

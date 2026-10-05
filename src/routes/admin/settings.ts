@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { jsonError, fieldDetails, readJson } from '../../util/http'
 import { settingsZod, settingsSchemaPayload, fieldSchemas } from '../../config/schema'
-import { CONFIG_KEYS, CONFIG_VERSION } from '../../config/definition'
+import { CONFIG_VERSION } from '../../config/definition'
 import { loadFlatSettings } from '../../config/loader'
 import type { AppEnv } from '../../types'
 

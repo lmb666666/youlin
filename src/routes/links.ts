@@ -12,7 +12,6 @@ interface FriendRow {
   id: number
   group_id: number
   author: string
-  nickname: string | null
   title: string | null
   desc: string | null
   link: string
@@ -120,7 +119,7 @@ export function publicRoutes() {
 
     const groupRows = await c.env.DB.prepare('SELECT id, name, "desc" FROM groups ORDER BY sort, id').all<GroupRow>()
     const friendRows = await c.env.DB.prepare(
-      `SELECT f.id, f.group_id, f.author, f.nickname, f.title, f."desc", f.link, f.feed, f.icon, f.avatar,
+      `SELECT f.id, f.group_id, f.author, f.title, f."desc", f.link, f.feed, f.icon, f.avatar,
               f.archs, f.since, f.comment, f.status
          FROM friends f ORDER BY f.sort, f.id`,
     ).all<FriendRow>()
