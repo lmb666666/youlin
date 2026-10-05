@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youlin.dev/schemas/api-circle.response.schema.json",
+  "title": "GET /api/circle 响应（接口二·朋友圈）",
+  "description": "文章聚合 + 统计。统计基于参与朋友圈全集（active+in_circle+feed），输出按 publishedAt 倒序截断。字段只增不改。",
+  "type": "object",
+  "required": ["stats", "articles"],
+  "additionalProperties": false,
+  "properties": {
+    "stats": {
+      "type": "object",
+      "required": ["friends", "active", "failed", "articles", "updatedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "friends": { "description": "参与朋友圈且 feed 可用的友链数", "type": "integer", "minimum": 0 },
+        "active": { "description": "其中库内有文章的", "type": "integer", "minimum": 0 },
+        "failed": { "description": "其中最近一次抓取失败的", "type": "integer", "minimum": 0 },
+        "articles": { "description": "库内文章总数（参与朋友圈的友链）", "type": "integer", "minimum": 0 },
+        "updatedAt": { "description": "最近一次文章入库时间；无文章为 null", "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "articles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "link", "publishedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "link": { "type": "string", "format": "uri", "pattern": "^https?://" },
+          "author": { "type": "string" },
+          "avatar": { "type": "string", "format": "uri", "pattern": "^https?://" },
+          "publishedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

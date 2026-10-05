@@ -1,15 +1,15 @@
 /** 时间工具：库内 datetime('now') 存的是 "YYYY-MM-DD HH:MM:SS"（UTC），输出一律 ISO 8601 UTC */
 
-const DB_TS = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
+const DB_TS = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/
 
 /** "2026-10-05 13:55:00" → "2026-10-05T13:55:00Z"；已是 ISO 或空则原样/undefined */
 export function isoUtc(value: string | null | undefined): string | undefined {
   if (!value) return undefined
-  if (DB_TS.test(value)) return value.replace(' ', 'T') + 'Z'
+  if (DB_TS.test(value)) return value.replace(' ', 'T').replace(/\.\d+$/, '') + 'Z'
   // 已经是 ISO 8601（含 Z）则直接返回；其他格式尝试规整
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value)) return value
   const d = new Date(value)
-  return Number.isNaN(d.getTime()) ? undefined : d.toISOString()
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
 /** 任意时间 → YYYY-MM-DD（UTC） */

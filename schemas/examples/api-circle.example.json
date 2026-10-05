@@ -1,0 +1,23 @@
+{
+  "stats": {
+    "friends": 6,
+    "active": 4,
+    "failed": 2,
+    "articles": 17,
+    "updatedAt": "2026-10-05T13:55:00Z"
+  },
+  "articles": [
+    {
+      "title": "近期小记（1）",
+      "link": "https://blog.liang.one/posts/6b4e8a1",
+      "author": "Liang",
+      "avatar": "https://bu.dusays.com/2026/07/12/6a532cc8ab04a.webp",
+      "publishedAt": "2025-11-22T13:36:25Z"
+    },
+    {
+      "title": "无作者的文章",
+      "link": "https://aki.example.com/posts/hello",
+      "publishedAt": "2025-11-20T08:00:00Z"
+    }
+  ]
+}

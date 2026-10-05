@@ -57,6 +57,7 @@ export async function loadFlatSettings(db: Env['DB'], env: Env): Promise<FlatSet
   const rows = await db.prepare('SELECT key, value FROM settings').all<{ key: string; value: string }>()
   const stored: FlatSettings = {}
   for (const row of rows.results) {
+    if (row.key.startsWith('internal.')) continue // 运行时簿记（轮转进度等），不属于应用配置
     try {
       stored[row.key] = JSON.parse(row.value)
     } catch {

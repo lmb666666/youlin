@@ -2,7 +2,9 @@ import { Hono } from 'hono'
 import type { AppEnv, Env } from './types'
 import { loadConfig } from './config/loader'
 import { publicRoutes } from './routes/links'
+import { publicCircleRoute } from './routes/circle'
 import { adminRoutes } from './routes/admin'
+import { runCronTick } from './crawler/crawl'
 
 const app = new Hono<AppEnv>()
 
@@ -14,6 +16,7 @@ app.use('/api/*', async (c, next) => {
 })
 
 app.route('/', publicRoutes())
+app.route('/', publicCircleRoute())
 app.route('/', adminRoutes())
 
 // /api/* 之外交给 Static Assets（wrangler assets 配置），这里不需要兜底路由
@@ -26,8 +29,15 @@ app.onError((err, c) => {
 
 export default {
   fetch: app.fetch,
-  // P1：Cron 分批轮转抓取（DESIGN §6）。P0 先占位，保证部署配置完整。
-  async scheduled(_event: unknown, _env: Env, ctx: { waitUntil: (p: Promise<unknown>) => void }) {
-    ctx.waitUntil(Promise.resolve())
+  // Cron 抓取（DESIGN §6）：每 5 分钟取最久未检查的 batchSize 个源，
+  // 条件请求 + 增量 upsert + 每日清理，单次远低于免费版 10ms CPU。
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(
+      (async () => {
+        const { cfg } = await loadConfig(env.DB, env)
+        const summary = await runCronTick(env.DB, env, cfg)
+        console.log('[cron] tick:', JSON.stringify(summary))
+      })(),
+    )
   },
 } satisfies ExportedHandler<Env>

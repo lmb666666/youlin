@@ -20,6 +20,7 @@
     "seed": "wrangler d1 execute youlin --local --file=scripts/seed.sql"
   },
   "dependencies": {
+    "fast-xml-parser": "^5.11.2",
     "hono": "^4.13.13",
     "zod": "^4.6.5"
   },

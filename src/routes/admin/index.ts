@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { requireAdmin } from '../../auth'
 import type { AppEnv } from '../../types'
 import { loginRoutes } from './login'
@@ -7,6 +7,7 @@ import { friendRoutes } from './friends'
 import { settingsRoutes } from './settings'
 import { importRoutes } from './import'
 import { exportRoutes } from './export'
+import { crawlerRoutes } from './crawler'
 
 export function adminRoutes() {
   const app = new Hono<AppEnv>()
@@ -18,6 +19,7 @@ export function adminRoutes() {
   app.route('/', settingsRoutes())
   app.route('/', importRoutes())
   app.route('/', exportRoutes())
+  app.route('/', crawlerRoutes())
 
   return app
 }

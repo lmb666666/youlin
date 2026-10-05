@@ -50,6 +50,55 @@ export interface FriendState {
   checkedAt?: string
 }
 
+export interface SourceState {
+  reachable: boolean | null
+  crawlable: boolean | null
+  bestMethod: 'rss' | 'homepage' | 'api' | 'none' | null
+  httpStatus: number | null
+  latencyMs: number | null
+  finalUrl: string | null
+  backlinkChecked: boolean
+  backlink: boolean | null
+  unreachableSince: string | null
+  rssUnavailableSince: string | null
+  lastPostPublished: string | null
+  lastPostDaysAgo: number | null
+  lastOkAt: string | null
+  lastError: string | null
+  failCount: number
+  nextCheckAt: string | null
+  checkedAt: string | null
+}
+
+export interface HealthFriend {
+  id: number
+  author: string
+  title?: string
+  link: string
+  feed?: string
+  inCircle: boolean
+  status: 'active' | 'hidden'
+  state: SourceState | null
+}
+
+export interface ArticleRow {
+  id: number
+  friendId: number
+  friendAuthor: string
+  title: string
+  link: string
+  author?: string
+  publishedAt?: string
+  fetchedAt?: string
+}
+
+export interface CrawlStatus {
+  running: boolean
+  round: { kind: string; startedAt: string; done: number; total: number } | null
+  activeCount: number
+  dueCount: number
+}
+
 export interface Friend {
   id: number
   groupId: number
