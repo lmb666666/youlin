@@ -1,96 +1,125 @@
 # 友邻 Youlin
 
-> Neighbors of your blog —— 一个跑在 Cloudflare 上的友链 + 朋友圈管理台
+[![CI](https://github.com/lmb666666/youlin/actions/workflows/ci.yml/badge.svg)](https://github.com/lmb666666/youlin/actions/workflows/ci.yml)
 
-**管友链**（增删改、体检、自助申请）**+ 管朋友圈**（定时抓取、聚合展示），全部在一个网页里完成；对外只输出 HTTP 数据接口，**不改动你博客的任何代码**。一个实例服务一个站点，MIT 开源，Cloudflare 免费额度内 **0 元/月**。
+> Neighbors of your blog
+
+给自己的博客配的友链管理台，顺手把朋友圈也管了。
+
+加一个友链要改数据文件、提交、等构建；朋友圈得单独跑脚本或者部署一个爬虫服务；朋友的站挂了没人提醒；收到的申请埋在评论区里。这些事现在都收在一个页面里：加友链、体检、审核申请、看抓取状态。你的博客不需要装任何东西——它对外只有几个 HTTP 接口，前端 fetch 一下就渲染出来。
+
+它跑在 Cloudflare Workers 上，不依赖博客系统，Hexo、Hugo、Nuxt、WordPress 都一样；一个实例服务一个站点，MIT 开源，个人站免费额度足够。
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lmb666666/youlin)
 
-## 它解决什么
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-links-dark.png">
+  <img src="docs/images/admin-links.png" alt="友链管理">
+</picture>
 
-独立博客维护友链的典型流程是：改数据文件 → 提交 → 等构建；朋友圈要单跑一个爬虫服务；朋友站点挂了无从察觉；友链申请埋在评论区。友邻把这些收敛成「网页里点几下」：
+## 有什么
 
-- **友链管理**：增删改查、分组、拖拽排序、隐藏；填一个站点地址就能**自动探测** RSS / favicon / 标题 / 头像
-- **健康体检**：可达性、延迟、RSS 可用性、反链检测、对方最近发文；失联自动分档退避复查；结果可导出 CSV
-- **朋友圈**：Cron 分批抓取朋友们的最新文章（条件请求省额度），聚合输出 + 抓取状态页
-- **自助申请**：公开申请页 + Turnstile 人机验证 + 反链检测证据 + 待审队列，一键通过自动入库
-- **三大对外接口**：友链数据 / 朋友圈 / 申请 —— 见下方「接口」
-- **设置中心**：全部配置项都有默认值、可视化编辑、可导入导出
+- 加友链时填个站点地址就行，RSS、favicon、头像、站点标题会自己探测补全；分组、拖拽排序、隐藏都是行内操作
+- 体检会定期跑：站点通不通、RSS 还能不能解析、对方有没有放你的链接、最近一次更新是什么时候。失联的站不会一直白跑——10 天以上 5 天查一次，30 天以上 10 天，60 天以上 15 天
+- 朋友圈按「每 5 分钟抓 3 个站」的节奏轮流抓，每个站留最新 5 篇；抓取情况随时可看，也能手动触发
+- 申请页可以直接外链给访客：带人机验证，自动检测对方有没有先加上你的链接，通过与否在待审队列里点
+- 50 多项配置都有默认值，想改就在设置页改，也能导出、导入
 
-## 界面
+<table>
+<tr>
+<td width="50%">
 
-管理台（浅色/深色跟随系统）：
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-circle-dark.png">
+  <img src="docs/images/admin-circle.png" alt="朋友圈">
+</picture>
 
-| 友链 | 朋友圈 |
-| --- | --- |
-| ![友链](docs/images/admin-links.png) | ![朋友圈](docs/images/admin-circle.png) |
+</td>
+<td width="50%">
 
-| 体检 | 设置 |
-| --- | --- |
-| ![体检](docs/images/admin-health.png) | ![设置](docs/images/admin-settings.png) |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/apply-dark.png">
+  <img src="docs/images/apply.png" alt="申请页">
+</picture>
 
-访客侧的内置申请页（可直接外链，文案可配置）：
+</td>
+</tr>
+</table>
 
-![申请页](docs/images/apply.png)
+<details>
+<summary>体检页与设置页截图</summary>
 
-## 部署（推荐：一键部署）
+<table>
+<tr>
+<td width="50%">
 
-1. 点上方 **Deploy to Cloudflare** 按钮 → 授权 GitHub（会在你的账号下创建一份仓库）
-2. 按提示填写 `ADMIN_TOKEN`（管理台登录口令，建议 `openssl rand -hex 32` 生成）
-3. 部署完成后，把该项目的 Workers Builds **部署命令设为 `npm run deploy`**（这一步让数据库迁移自动执行）
-4. 打开 `https://<你的实例>.workers.dev/admin` 登录，到「设置」里填上你的主站地址
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-health-dark.png">
+  <img src="docs/images/admin-health.png" alt="体检">
+</picture>
 
-命令行部署、自定义域名、升级路径与常见问题见 **[部署指南](docs/deployment.md)**。
+</td>
+<td width="50%">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-settings-dark.png">
+  <img src="docs/images/admin-settings.png" alt="设置">
+</picture>
+
+</td>
+</tr>
+</table>
+
+</details>
+
+## 三个接口
+
+| 接口 | 端点 | 用途 |
+| --- | --- | --- |
+| 友链数据 | `GET /api/links` | 友链分组数据，每条带体检摘要；可选 `?group=` |
+| 朋友圈 | `GET /api/circle` | 文章聚合与统计；可选 `?limit=` |
+| 申请 | `GET /apply`、`POST /apply` | 申请页可直接外链给访客 |
+
+返回统一是 JSON，ISO 8601 时间、camelCase 字段、CORS 全开：
+
+```js
+const { groups } = await (await fetch('https://你的实例.workers.dev/api/links')).json()
+// groups[].links[] 里是 author / link / avatar / feed / health……直接渲染
+```
+
+字段明细、错误码、自建申请表单的示例都在[接口文档](docs/api.md)。
+
+## 部署
+
+点上面的 Deploy 按钮，按提示填一个管理口令（用 `openssl rand -hex 32` 生成一个），其余交给 Cloudflare：建数据库、绑定、部署到 `*.workers.dev`，都在免费额度内。
+
+有一个容易漏的步骤：部署后在 Workers Builds 里把 Deploy command 改成 `npm run deploy`，让数据库迁移跟着部署走。漏掉的表现是登录时报「数据库尚未初始化」，改完重新部署一次就好。
+
+命令行部署、自定义域名、版本升级见[部署指南](docs/deployment.md)。
 
 ## 本地开发
 
 ```bash
 pnpm install
-cp .dev.vars.example .dev.vars   # 本地开发口令，随便填
-pnpm seed                        # 可选：塞入示例数据
+cp .dev.vars.example .dev.vars   # 本地口令，随便填
+pnpm seed                        # 可选：塞点示例数据
 pnpm dev                         # http://127.0.0.1:8787/admin
 ```
 
-本地开发不需要 Cloudflare 账号。管理台前端热更：`pnpm dev:web`。
+不需要 Cloudflare 账号，D1 用本地模拟。提交前跑一遍 `pnpm lint && pnpm typecheck && pnpm test`，和 CI 一致。
 
-## 接口
+## 说清边界
 
-三个接口 = 三条路径，命名各自独立；时间一律 ISO 8601 UTC、字段 camelCase、CORS 全开、边缘缓存默认 5 分钟。契约冻结在仓库 [`schemas/`](schemas/)，只做增量演进。
+只做「管理台 + 对外接口」这一件事：不做评论、不做多租户、不做全文搜索、不做邮件订阅。
 
-| 接口 | 端点 | 用途 |
-| --- | --- | --- |
-| 一·友链数据 | `GET /api/links` | 友链分组数据，每条含体检摘要 `health`；可选 `?group=` |
-| 二·朋友圈 | `GET /api/circle` | 文章聚合 + 统计；可选 `?limit=` |
-| 三·友链申请 | `GET /apply`（申请页）· `POST /apply`（提交） | 访客自助申请 |
-
-```js
-// 渲染友链页的推荐方式：前端运行时拉取，改数据无需构建
-const { groups } = await (await fetch('https://your-instance.workers.dev/api/links')).json()
-for (const g of groups) {
-  for (const link of g.links) {
-    // link.author / link.link / link.avatar / link.health?  …直接渲染
-  }
-}
-```
-
-完整字段说明、错误码与更多示例见 **[接口文档](docs/api.md)**。
-
-## 配置
-
-所有业务配置都在管理台「设置」页可视化编辑，**每项都有默认值**，开箱即用；也支持 `YOULIN_CONFIG_OVERRIDES` 环境变量覆盖与 JSON 导入导出。完整清单见 **[配置参考](docs/configuration.md)**。
+抓取与体检的思路参考了 [Friend-Circle-Lite](https://github.com/willow-god/Friend-Circle-Lite)，它做得很好但只有数据没有后台；原版 hexo-circle-of-friends 又已停止维护。这里的做法是在同样的抓取经验上包一层管理台，并且按 Workers 免费额度重新设计了节奏：分批轮转 + 条件请求，绝大多数轮次 304 短路，不做一次性全量抓取。
 
 ## 文档
 
-| 文档 | 内容 |
-| --- | --- |
-| [部署指南](docs/deployment.md) | 一键部署 / CLI / Workers Builds、自定义域名、升级、成本、常见问题 |
-| [接口文档](docs/api.md) | 三大接口的字段、参数、错误码与示例 |
-| [配置参考](docs/configuration.md) | 三层配置机制与全部配置项（含默认值） |
-| [贡献指南](CONTRIBUTING.md) | 开发环境、测试要求、提交约定 |
-
-## 技术栈
-
-Cloudflare Workers + Hono + D1 + Cron Triggers + Static Assets；管理台 React 19 + Vite + Tailwind CSS v4 + shadcn/ui。
+- [部署指南](docs/deployment.md)：三种部署方式、自定义域名、升级、常见问题
+- [接口文档](docs/api.md)：三个接口的字段、参数与错误码
+- [配置参考](docs/configuration.md)：全部配置项与默认值
+- [贡献指南](CONTRIBUTING.md)
 
 ## 许可
 
