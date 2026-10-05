@@ -49,13 +49,21 @@ pnpm deploy                        # 构建 + 迁移 + 部署（等价于手动�
 
 ## 方式三：Workers Builds（连接你自己的仓库）
 
-如果你把仓库放在自己的 Git 账号下（而不是让按钮创建副本）：
+适合已经有一份仓库的场景——比如自己维护这个项目、fork 过、或者想让部署从你正在开发的仓库出发。Deploy 按钮只会把源仓库**再克隆一份**到你账号里，不会复用已有仓库（账号里已有同名仓库时直接失败），这时走本方式：
 
-1. Cloudflare 面板 → Workers & Pages → Create → **Import a repository**，选择仓库。
-2. **Build command** 填 `pnpm run build`（或留空，`pnpm run deploy` 内已包含构建）。
-3. **Deploy command** 填 `pnpm run deploy`（含数据库迁移）。
-4. 在 Worker 的 Settings → Variables & Secrets 里添加 `ADMIN_TOKEN`（及可选的 `TURNSTILE_SECRET` / `GITHUB_PAT`）。
-5. 保存并部署；以后 push 即自动构建/部署，PR 会有预览地址。
+1. **先建 D1 并填入真实 ID**（导入流程不会替你建库）：
+
+   ```bash
+   npx wrangler login
+   npx wrangler d1 create youlin     # 复制返回的 database_id
+   ```
+
+   把返回的 ID 填进 `wrangler.jsonc` 的 `database_id`（替换掉占位符）并提交推送。用面板建库也可以：在 D1 详情页复制 Database ID，同样填进配置文件。
+
+2. Cloudflare 面板 → Workers & Pages → Create → **Import a repository**，选择你的仓库。Worker 名称需要与 `wrangler.jsonc` 里的 `name` 一致（这里是 `youlin`），否则构建会失败。
+3. **Build command** 填 `pnpm run build`；**Deploy command** 填 `pnpm run deploy`（含数据库迁移）。
+4. 添加密钥 `ADMIN_TOKEN`（及可选的 `TURNSTILE_SECRET` / `GITHUB_PAT`）。创建向导里没有填密钥的位置时，部署完成后到 Worker 的 **Settings → Variables and Secrets** 添加，再 Retry deployment 一次。
+5. 首次构建会完成建表与部署；以后 push 即自动构建/部署，PR 会有预览地址。
 
 ## 自定义域名
 
