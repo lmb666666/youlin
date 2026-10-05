@@ -107,12 +107,12 @@ const { groups } = await (await fetch('https://你的实例.workers.dev/api/link
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lmb666666/youlin)
 
-1. 点击上方按钮，按提示填写管理口令（用 `openssl rand -hex 32` 生成一个）
-2. 部署后在 Workers Builds 中把 Deploy command 改为 `npm run deploy`，数据库迁移会随部署执行
-3. 打开 `https://<你的实例>.workers.dev/admin` 登录，在设置中填写主站地址
+1. 点击上方按钮，按提示连接 GitHub 账号（Cloudflare 会把仓库复制一份到你名下，用于自动部署）
+2. 填写管理口令（用 `openssl rand -hex 32` 生成一个随机值），数据库名保持默认
+3. 构建命令与部署命令会自动填好（`pnpm run build` / `pnpm run deploy`），保持默认并点击创建。部署命令里包含数据库迁移，建表随首次部署自动完成
+4. 等构建结束，打开 `https://<项目名>.<你的子域>.workers.dev/admin` 登录，在设置中填写主站地址
 
-第 2 步容易遗漏。遗漏时登录会提示「数据库尚未初始化」，修改后重新部署即可。
-命令行部署、自定义域名和版本升级见[部署指南](docs/deployment.md)。
+不想连接 Git 账号的话，也可以用命令行部署（见[部署指南](docs/deployment.md)）；自定义域名与版本升级同样在指南里。
 
 ### 本地开发
 

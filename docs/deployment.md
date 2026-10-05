@@ -11,29 +11,20 @@
 ## 方式一：一键部署（推荐）
 
 1. **点按钮**：在 [README](../README.md) 顶部点击 **Deploy to Cloudflare**。
-2. **授权并创建仓库**：按提示授权 GitHub，Cloudflare 会在你的账号下创建一份仓库副本（是副本，不是 fork）。
-3. **填写密钥**：部署流程会引导填写 `ADMIN_TOKEN`（管理台登录口令）。生成本地随机口令：
+2. **连接 Git 账号**：按提示连接 GitHub（或 GitLab），Cloudflare 会把仓库复制一份到你名下，并接上自动部署（之后每次 push 都会自动重新部署）。仓库本来就在你账号里的话（比如部署自己的仓库），「创建专用 Git 存储库」不用勾。
+3. **填写配置**：`ADMIN_TOKEN` 是管理台登录口令，用下面的命令生成一个随机值；D1 数据库名保持默认即可。
 
    ```bash
    openssl rand -hex 32
    ```
 
-4. **完成部署**：Cloudflare 会自动创建 D1 数据库并绑定到 Worker（`wrangler.jsonc` 里的占位 `database_id` 会被自动回填）。
-5. **启用自动迁移（重要）**：进入 Cloudflare 面板 → **Workers & Pages** → 选择刚创建的 Worker → **Settings → Builds & deployments** → 把 **Deploy command** 改为：
-
-   ```
-   npm run deploy
-   ```
-
-   然后点一次 **Retry deployment**。此后每次推送代码，部署命令都会自动执行数据库迁移（`wrangler d1 migrations apply DB --remote`），你不需要手工建表。
-
-   > 说明：Cloudflare 默认的部署命令是 `npx wrangler deploy`，它**不会**执行 D1 迁移。`npm run deploy` 是本仓库 `package.json` 里预置的脚本，先构建管理台、再迁移数据库、最后部署 Worker。
-   > 忘记这一步的表现：访问管理台登录时报「数据库尚未初始化」（接口返回 `database_not_migrated`），按上面改为 `npm run deploy` 重试即可恢复。
-
-6. **登录管理台**：打开 `https://<你的实例>.workers.dev/admin`，输入第 3 步的 `ADMIN_TOKEN`。
-7. **基础配置**：到「设置」页填写 `site.url`（你的主站地址，反链检测的默认目标）；到「导入」页可批量迁入现有友链数据。
+4. **确认命令并开始部署**：构建命令 `pnpm run build` 与部署命令 `pnpm run deploy` 会按仓库内容自动填好，保持默认即可。部署命令里包含数据库迁移（`wrangler d1 migrations apply DB --remote`），建表会随首次部署自动完成，不需要手工执行。点击页面底部的创建按钮开始部署。
+5. **登录管理台**：打开 `https://<项目名>.<你的子域>.workers.dev/admin`，输入第 3 步的 `ADMIN_TOKEN`。
+6. **基础配置**：到「设置」页填写 `site.url`（你的主站地址，反链检测的默认目标）；到「导入」页可批量迁入现有友链数据。
 
 约 10 分钟可完成以上全部步骤。
+
+> 部署表单里的「使用 Cloudflare Access 保护」保持关闭：它会连同对外的三个公开接口一起挡掉。想给管理台单独加一层保护的话，在 Cloudflare Zero Trust 里建一个限定 `/admin` 与 `/api/admin` 路径的 Access 应用即可。
 
 ## 方式二：wrangler CLI
 
@@ -57,8 +48,8 @@ pnpm deploy                        # 构建 + 迁移 + 部署（等价于手动�
 如果你把仓库放在自己的 Git 账号下（而不是让按钮创建副本）：
 
 1. Cloudflare 面板 → Workers & Pages → Create → **Import a repository**，选择仓库。
-2. **Build command** 填 `pnpm build`（或留空，`npm run deploy` 内已包含构建）。
-3. **Deploy command** 填 `npm run deploy`（含数据库迁移）。
+2. **Build command** 填 `pnpm run build`（或留空，`pnpm run deploy` 内已包含构建）。
+3. **Deploy command** 填 `pnpm run deploy`（含数据库迁移）。
 4. 在 Worker 的 Settings → Variables & Secrets 里添加 `ADMIN_TOKEN`（及可选的 `TURNSTILE_SECRET` / `GITHUB_PAT`）。
 5. 保存并部署；以后 push 即自动构建/部署，PR 会有预览地址。
 
@@ -98,7 +89,7 @@ pnpm deploy        # 自动执行增量迁移（迁移文件只增不改）
 
 | 现象 | 原因与处理 |
 | --- | --- |
-| 登录时报「数据库尚未初始化」（`database_not_migrated`） | D1 迁移未执行。把 Deploy command 设为 `npm run deploy` 并重新部署，或本地跑 `wrangler d1 migrations apply DB --remote` |
+| 登录时报「数据库尚未初始化」（`database_not_migrated`） | 部署命令没有执行迁移。到 Workers Builds 把 Deploy command 设为 `pnpm run deploy` 并重新部署，或本地跑 `wrangler d1 migrations apply DB --remote` |
 | `wrangler` 报 D1 绑定错误 | `wrangler.jsonc` 里的 `database_id` 还是占位符，用 `wrangler d1 list` 查到的真实 ID 替换 |
 | 登录返回 401 / 口令不对 | Secret 名必须是 `ADMIN_TOKEN`；修改后重新部署一次 |
 | 申请页提交报 403 `turnstile_unconfigured` | 开启了 `apply.turnstile` 但没设置 `TURNSTILE_SECRET`；补设 Secret，或临时在设置里关闭人机验证 |
