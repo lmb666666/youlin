@@ -142,6 +142,23 @@ export interface SettingsSchemaGroup {
   fields: SettingsSchemaField[]
 }
 
+export interface Application {
+  id: number
+  siteName: string
+  author?: string
+  link: string
+  avatar?: string
+  feed?: string
+  desc?: string
+  contact?: string
+  note?: string
+  backlink: { ok: boolean | null; checkedAt: string | null; detail: string | null }
+  status: 'pending' | 'approved' | 'rejected'
+  reviewNote?: string
+  createdAt?: string
+  reviewedAt?: string
+}
+
 export interface ImportResult {
   imported: number
   updated: number

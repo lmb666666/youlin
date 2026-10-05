@@ -4,6 +4,7 @@ import LoginPage from '@/pages/login'
 import LinksPage from '@/pages/links'
 import CirclePage from '@/pages/circle'
 import HealthPage from '@/pages/health'
+import ApplicationsPage from '@/pages/applications'
 import ImportPage from '@/pages/import'
 import SettingsPage from '@/pages/settings'
 
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/admin/links" element={<LinksPage />} />
         <Route path="/admin/circle" element={<CirclePage />} />
         <Route path="/admin/health" element={<HealthPage />} />
+        <Route path="/admin/applications" element={<ApplicationsPage />} />
         <Route path="/admin/import" element={<ImportPage />} />
         <Route path="/admin/settings" element={<SettingsPage />} />
       </Route>

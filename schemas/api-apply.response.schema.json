@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youlin.dev/schemas/api-apply.response.schema.json",
+  "title": "POST /apply 成功响应（接口三·提交申请，201）",
+  "description": "提交成功后返回申请编号、状态与反链检测结果。错误响应为 { error: { code, message, details? } }，错误码见 DESIGN §4.3。",
+  "type": "object",
+  "required": ["id", "status", "backlink"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "integer", "minimum": 1 },
+    "status": { "description": "pending 待审核；autoApprove 开启时为 approved", "enum": ["pending", "approved"] },
+    "backlink": {
+      "type": "object",
+      "required": ["ok", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "ok": { "description": "true/false；null=未检测（策略 off 或无法访问）", "type": ["boolean", "null"] },
+        "detail": { "description": "检测证据（命中的 URL 或未发现说明）", "type": ["string", "null"] }
+      }
+    }
+  }
+}

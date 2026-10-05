@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
-import { Inbox, Link2, LogOut, Monitor, Moon, Rss, HeartPulse, Settings, Sun } from 'lucide-react'
+import { Inbox, Link2, LogOut, Monitor, Moon, Rss, HeartPulse, Settings, Sun, UserRoundPlus } from 'lucide-react'
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -12,6 +12,7 @@ const NAV = [
   { to: '/admin/links', label: '友链', icon: Link2 },
   { to: '/admin/circle', label: '朋友圈', icon: Rss },
   { to: '/admin/health', label: '体检', icon: HeartPulse },
+  { to: '/admin/applications', label: '申请', icon: UserRoundPlus },
   { to: '/admin/import', label: '导入', icon: Inbox },
   { to: '/admin/settings', label: '设置', icon: Settings },
 ]

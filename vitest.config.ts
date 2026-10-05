@@ -9,6 +9,8 @@ export default defineConfig(async () => ({
       miniflare: {
         bindings: {
           ADMIN_TOKEN: 'test-admin-token',
+          TURNSTILE_SECRET: 'test-turnstile-secret',
+          GITHUB_PAT: 'test-github-pat',
           TEST_MIGRATIONS: await readD1Migrations(path.join(import.meta.dirname, 'migrations')),
         },
       },

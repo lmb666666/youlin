@@ -1,0 +1,8 @@
+{
+  "id": 12,
+  "status": "pending",
+  "backlink": {
+    "ok": true,
+    "detail": "在 https://newfriend.example.com/links 发现指向 example.com 的链接"
+  }
+}

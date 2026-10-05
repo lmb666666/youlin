@@ -1,5 +1,7 @@
-// 本地 mock RSS 源：验收抓取链路用（node scripts/mock-source.mjs [port]）
-// 两个源：/feed-a（带 ETag，支持条件请求）、/feed-b（无 ETag）；每次启动内容固定。
+// 本地 mock 服务：验收抓取/申请/重建链路用（node scripts/mock-source.mjs [port]）
+//   /feed-a /feed-b   RSS 源（-a 带 ETag 支持条件请求）
+//   /                 首页 HTML（含 feed 声明与一条自家反链）
+//   POST /rebuild     模拟接入方重建回调（打印收到的重建请求）
 import { createServer } from 'node:http'
 
 const port = Number(process.argv[2] ?? 8788)
@@ -30,6 +32,18 @@ createServer((req, res) => {
   console.log(`[${new Date().toISOString()}] #${hits} ${req.method} ${url}`)
   for (const [k, v] of Object.entries(req.headers)) {
     if (k.startsWith('if-')) console.log(`    ${k}: ${v}`)
+  }
+  if (req.method === 'POST' && url === '/rebuild') {
+    let body = ''
+    req.on('data', (d) => {
+      body += d
+    })
+    req.on('end', () => {
+      console.log(`[rebuild] 收到重建请求: ${body}`)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end('{"ok":true}')
+    })
+    return
   }
   if (req.headers['if-none-match'] === etag && url === '/feed-a') {
     res.writeHead(304, { ETag: etag })

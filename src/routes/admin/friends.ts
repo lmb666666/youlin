@@ -3,7 +3,16 @@ import { z } from 'zod'
 import { jsonError, fieldDetails, readJson } from '../../util/http'
 import { httpUrl, dateYMD } from '../../util/validate'
 import { isoUtc } from '../../util/time'
+import { triggerRebuild } from '../../rebuild'
 import type { AppEnv } from '../../types'
+
+/** rebuild.auto 时数据变化后触发接入方重建（不阻塞响应） */
+function maybeAutoRebuild(c: Context<AppEnv>, reason: string): void {
+  const cfg = c.get('cfg')
+  if (cfg.rebuild.enabled && cfg.rebuild.auto) {
+    c.executionCtx.waitUntil(triggerRebuild(c.env, cfg, reason))
+  }
+}
 
 const friendInput = z.object({
   groupId: z.number().int().positive(),
@@ -102,6 +111,7 @@ export function friendRoutes() {
           d.since, d.comment ?? null, d.inCircle === false ? 0 : 1, d.status ?? 'active', sort,
         )
         .run()
+      maybeAutoRebuild(c, 'friend:create')
       return c.json({ id: res.meta.last_row_id }, 201)
     } catch (e) {
       if (await isUniqueLinkError(c, e, d.link)) return jsonError(409, 'duplicate_link', '该链接已存在')
@@ -152,6 +162,7 @@ export function friendRoutes() {
       if (await isUniqueLinkError(c, e, d.link)) return jsonError(409, 'duplicate_link', '该链接已存在')
       throw e
     }
+    maybeAutoRebuild(c, 'friend:update')
     return c.json({ ok: true })
   })
 
@@ -163,6 +174,7 @@ export function friendRoutes() {
       c.env.DB.prepare('DELETE FROM source_state WHERE friend_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM friends WHERE id = ?').bind(id),
     ])
+    maybeAutoRebuild(c, 'friend:delete')
     return c.json({ ok: true })
   })
 
