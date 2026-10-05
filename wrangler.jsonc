@@ -1,6 +1,6 @@
 // 友邻 Youlin — Cloudflare Workers 配置
 // 「Deploy to Cloudflare」按钮会读取本文件并自动创建/回填资源：
-//   - D1：database_id 为占位符，部署流程创建数据库后回填真实 ID
+//   - D1：本仓库已填入维护者实例的 database_id；其他用户点按钮时 Cloudflare 会另建数据库并改写
 //   - secrets.required：部署流程引导填写 ADMIN_TOKEN（TURNSTILE_SECRET / GITHUB_PAT 选配，
 //     届时用 `wrangler secret put` 补充，或加入本列表参与引导）
 {
@@ -20,9 +20,9 @@
     {
       "binding": "DB",
       "database_name": "youlin",
-      // 占位符：Deploy to Cloudflare 按钮会自动创建 D1 并回填此 ID；
-      // CLI 部署则用 `wrangler d1 create youlin` 返回的 ID 替换。
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      // 本仓库当前填写的是维护者自用实例的 ID；
+      // 其他用户点 Deploy to Cloudflare 按钮时，Cloudflare 会在其账号下新建数据库并改写此字段。
+      "database_id": "46aa4385-feae-453c-a656-7d29578a43de",
       // 迁移目录（默认值，显式声明便于部署按钮/CI 识别）
       "migrations_dir": "migrations"
     }
