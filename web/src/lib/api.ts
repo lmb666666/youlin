@@ -1,0 +1,102 @@
+/** 管理 API 封装：JSON 请求、错误归一、401 跳登录 */
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+    public details?: Record<string, string>,
+  ) {
+    super(message)
+  }
+}
+
+export async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    headers: {
+      ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...init.headers,
+    },
+  })
+  if (res.status === 401 && !path.startsWith('/api/admin/login')) {
+    window.location.assign('/admin/login')
+    throw new ApiError(401, 'unauthorized', '未登录')
+  }
+  const body = (await res.json().catch(() => null)) as
+    | { error?: { code: string; message: string; details?: Record<string, string> } }
+    | null
+  if (!res.ok) {
+    const err = body?.error
+    throw new ApiError(res.status, err?.code ?? 'unknown', err?.message ?? `请求失败（${res.status}）`, err?.details)
+  }
+  return body as T
+}
+
+// ── 类型（与管理 API 输出一致）───────────────────────────────────────────
+
+export interface Group {
+  id: number
+  name: string
+  desc?: string
+  sort: number
+  friendCount: number
+}
+
+export interface FriendState {
+  reachable: boolean | null
+  crawlable: boolean | null
+  failCount: number
+  checkedAt?: string
+}
+
+export interface Friend {
+  id: number
+  groupId: number
+  groupName?: string
+  author: string
+  nickname?: string
+  title?: string
+  desc?: string
+  link: string
+  feed?: string
+  icon?: string
+  avatar?: string
+  archs?: string[]
+  since: string
+  comment?: string
+  inCircle: boolean
+  status: 'active' | 'hidden'
+  sort: number
+  createdAt?: string
+  updatedAt?: string
+  state?: FriendState | null
+}
+
+export interface SettingsSchemaField {
+  key: string
+  type: 'string' | 'text' | 'number' | 'boolean' | 'enum' | 'stringList' | 'json'
+  default: unknown
+  label: string
+  description: string
+  options?: string[]
+  min?: number
+  max?: number
+  placeholder?: string
+  full?: boolean
+}
+
+export interface SettingsSchemaGroup {
+  key: string
+  label: string
+  description: string
+  fields: SettingsSchemaField[]
+}
+
+export interface ImportResult {
+  imported: number
+  updated: number
+  skipped: number
+  groupsCreated: number
+  errors: { index: number; message: string }[]
+}

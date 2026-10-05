@@ -1,0 +1,7 @@
+# 「Deploy to Cloudflare」按钮按本文件引导填写必填密钥；部署后不落入任何仓库。
+# 管理台登录口令，建议：openssl rand -hex 32
+ADMIN_TOKEN=
+# 选配：Turnstile 人机验证 Secret（申请接口用，P2 起）
+# TURNSTILE_SECRET=
+# 选配：GitHub PAT（rebuild.provider=github_dispatch 时用，fine-grained、仅单仓库）
+# GITHUB_PAT=

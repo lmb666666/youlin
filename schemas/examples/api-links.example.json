@@ -1,0 +1,41 @@
+{
+  "groups": [
+    {
+      "name": "朋友们",
+      "desc": "在这里添加你关注的博客。",
+      "links": [
+        {
+          "author": "Liang",
+          "title": "Liang 的博客",
+          "desc": "一位数码科技爱好者",
+          "link": "https://blog.liang.one/",
+          "feed": "https://blog.liang.one/atom.xml",
+          "icon": "https://blog.liang.one/favicon.ico",
+          "avatar": "https://bu.dusays.com/2026/07/12/6a532cc8ab04a.webp",
+          "archs": ["Nuxt"],
+          "since": "2024-08-25",
+          "comment": "好友，数码科技方向",
+          "health": {
+            "reachable": true,
+            "crawlable": true,
+            "backlink": true,
+            "latency": 0.84,
+            "lastPostAt": "2026-09-25T12:04:00Z",
+            "staleDays": 10,
+            "unreachableDays": null,
+            "checkedAt": "2026-10-05T13:55:00Z"
+          }
+        },
+        {
+          "author": "Aki",
+          "link": "https://aki.example.com/",
+          "since": "2025-01-02"
+        }
+      ]
+    },
+    {
+      "name": "技术区",
+      "links": []
+    }
+  ]
+}

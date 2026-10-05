@@ -1,0 +1,41 @@
+// 友邻 Youlin — Cloudflare Workers 配置
+// 「Deploy to Cloudflare」按钮会读取本文件并自动创建/回填资源：
+//   - D1：database_id 为占位符，部署流程创建数据库后回填真实 ID
+//   - secrets.required：部署流程引导填写 ADMIN_TOKEN（TURNSTILE_SECRET / GITHUB_PAT 选配，
+//     届时用 `wrangler secret put` 补充，或加入本列表参与引导）
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "youlin",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+
+  "assets": {
+    "directory": "web/dist",
+    "not_found_handling": "single-page-application",
+    // 接口路径必须落到 Worker，其余走静态资源（SPA）
+    "run_worker_first": ["/api/*", "/apply"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "youlin",
+      // 占位符：Deploy to Cloudflare 按钮会自动创建 D1 并回填此 ID；
+      // CLI 部署则用 `wrangler d1 create youlin` 返回的 ID 替换。
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+    }
+  ],
+
+  // 免费 Cron 最小间隔 1 分钟；默认每 5 分钟一轮（§6 抓取器）
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+
+  "observability": {
+    "enabled": true
+  },
+
+  "secrets": {
+    "required": ["ADMIN_TOKEN"]
+  }
+}

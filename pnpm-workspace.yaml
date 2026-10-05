@@ -1,0 +1,9 @@
+packages:
+  - "."
+  - "web"
+minimumReleaseAgeExclude:
+  - '@cloudflare/workers-types@5.20261005.1'
+
+onlyBuiltDependencies:
+  - esbuild
+  - workerd

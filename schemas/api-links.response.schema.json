@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://youlin.dev/schemas/api-links.response.schema.json",
+  "title": "GET /api/links 响应（接口一·友链数据）",
+  "description": "友链分组数据，每条含体检摘要 health。字段只增不改；可选字段无值不输出。示例见 schemas/examples/api-links.example.json（与 DESIGN §4.1 保持一致）。",
+  "type": "object",
+  "required": ["groups"],
+  "additionalProperties": false,
+  "properties": {
+    "groups": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/group" }
+    }
+  },
+  "$defs": {
+    "group": {
+      "type": "object",
+      "required": ["name", "links"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "desc": { "type": "string" },
+        "links": { "type": "array", "items": { "$ref": "#/$defs/link" } }
+      }
+    },
+    "link": {
+      "type": "object",
+      "required": ["author", "link", "since"],
+      "additionalProperties": false,
+      "properties": {
+        "author": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "desc": { "type": "string" },
+        "link": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "feed": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "icon": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "avatar": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "archs": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "since": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "comment": { "type": "string" },
+        "health": { "$ref": "#/$defs/health" }
+      }
+    },
+    "health": {
+      "type": "object",
+      "required": ["backlink", "unreachableDays", "checkedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "reachable": { "type": "boolean" },
+        "crawlable": { "type": "boolean" },
+        "backlink": { "description": "true/false；null=未检测", "type": ["boolean", "null"] },
+        "latency": { "description": "秒；不可达为 -1", "type": "number" },
+        "lastPostAt": { "description": "对方最近一篇文章发布时间", "type": "string", "format": "date-time" },
+        "staleDays": { "description": "对方最近一篇文章距今天数", "type": "integer", "minimum": 0 },
+        "unreachableDays": { "description": "失联天数；正常为 null", "type": ["integer", "null"], "minimum": 0 },
+        "checkedAt": { "description": "本次体检时间", "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
