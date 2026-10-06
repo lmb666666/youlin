@@ -1,6 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="52" fill="#18181b"/>
-  <rect x="24" y="86" width="88" height="84" rx="22" fill="#FAFAFA"/>
-  <rect x="144" y="86" width="88" height="84" rx="22" fill="#FAFAFA"/>
-  <circle cx="128" cy="128" r="19" fill="#f59e0b"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="6 74 244 108">
+  <defs>
+    <linearGradient id="ga" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fcd34d"/><stop offset="1" stop-color="#f59e0b"/></linearGradient>
+    <linearGradient id="gb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fb923c"/><stop offset="1" stop-color="#ea580c"/></linearGradient>
+    <clipPath id="c"><circle cx="128" cy="149" r="21"/></clipPath>
+  </defs>
+  <rect x="120" y="94" width="116" height="70" rx="35" fill="none" stroke="url(#gb)" stroke-width="21"/>
+  <rect x="20" y="94" width="116" height="70" rx="35" fill="none" stroke="url(#ga)" stroke-width="21"/>
+  <rect x="120" y="94" width="116" height="70" rx="35" fill="none" stroke="url(#gb)" stroke-width="21" clip-path="url(#c)"/>
 </svg>
