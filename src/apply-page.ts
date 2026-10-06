@@ -95,6 +95,7 @@ ${turnstileBlock}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>友链申请 · ${siteName}</title>
 ${turnstileScript}
 <style>

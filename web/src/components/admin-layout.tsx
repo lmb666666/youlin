@@ -52,7 +52,7 @@ export function AdminLayout() {
       <Sidebar collapsible="icon">
         <SidebarHeader>
           <div className="flex items-center gap-2 px-2 py-1.5">
-            <div className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground font-semibold">邻</div>
+            <img src="/logo.svg" alt="" className="size-8 shrink-0 rounded-md" />
             <div className="leading-tight group-data-[collapsible=icon]:hidden">
               <div className="text-sm font-semibold">友邻</div>
               <div className="text-xs text-muted-foreground">友链 · 朋友圈管理台</div>

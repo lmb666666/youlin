@@ -1,3 +1,5 @@
+<img src="docs/images/logo.svg" width="88" height="88" alt="友邻 Youlin">
+
 # 友邻 Youlin
 
 [![CI](https://github.com/lmb666666/youlin/actions/workflows/ci.yml/badge.svg)](https://github.com/lmb666666/youlin/actions/workflows/ci.yml)

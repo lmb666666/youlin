@@ -30,7 +30,7 @@ export default function LoginPage() {
     <div className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-1 flex size-12 items-center justify-center rounded-lg bg-primary text-xl font-bold text-primary-foreground">邻</div>
+          <img src="/logo.svg" alt="友邻" className="mx-auto mb-2 size-12 rounded-lg" />
           <CardTitle>友邻 · 管理台</CardTitle>
           <CardDescription>输入管理口令登录</CardDescription>
         </CardHeader>
