@@ -13,7 +13,7 @@
     "directory": "web/dist",
     "not_found_handling": "single-page-application",
     // 接口路径必须落到 Worker，其余走静态资源（SPA）
-    "run_worker_first": ["/api/*", "/apply"]
+    "run_worker_first": ["/api/*", "/apply", "/healthz"]
   },
 
   "d1_databases": [

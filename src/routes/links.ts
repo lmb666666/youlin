@@ -113,15 +113,32 @@ export function corsHeaders(cfg: AppConfig): Record<string, string> {
 export function publicRoutes() {
   const app = new Hono<AppEnv>()
 
+  // 健康检查：供 uptime 监控；附带 D1 可达性
+  app.get('/healthz', async (c) => {
+    let db = true
+    try {
+      await c.env.DB.prepare('SELECT 1').first()
+    } catch {
+      db = false
+    }
+    return c.json(
+      { ok: db, db },
+      db ? 200 : 503,
+      { 'Cache-Control': 'no-store' },
+    )
+  })
+
   app.get('/api/links', async (c) => {
     const cfg = c.get('cfg')
     const groupName = c.req.query('group')
 
     const groupRows = await c.env.DB.prepare('SELECT id, name, "desc" FROM groups ORDER BY sort, id').all<GroupRow>()
+    // hidden 过滤下推 SQL，避免全量扫描后在 JS 过滤
+    const where = cfg.api.includeHidden ? '' : "WHERE f.status = 'active'"
     const friendRows = await c.env.DB.prepare(
       `SELECT f.id, f.group_id, f.author, f.title, f."desc", f.link, f.feed, f.icon, f.avatar,
               f.archs, f.since, f.comment, f.status
-         FROM friends f ORDER BY f.sort, f.id`,
+         FROM friends f ${where} ORDER BY f.sort, f.id`,
     ).all<FriendRow>()
     const stateRows = await c.env.DB.prepare(
       `SELECT friend_id, reachable, crawlable, backlink_checked, backlink, latency_ms,
@@ -143,7 +160,6 @@ export function publicRoutes() {
         const out: { name: string; desc?: string; links: LinkOutput[] } = { name: g.name, links: [] }
         if (g.desc) out.desc = g.desc
         for (const f of friendsByGroup.get(g.id) ?? []) {
-          if (!cfg.api.includeHidden && f.status !== 'active') continue
           out.links.push(buildLink(f, stateByFriend.get(f.id)))
         }
         return out

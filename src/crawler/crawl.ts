@@ -99,6 +99,8 @@ export async function runManualRound(db: Env['DB'], env: Env, cfg: AppConfig): P
   const sources = await listActiveFriends(db)
   const startedAt = new Date().toISOString()
   let done = 0
+  // 进度写节流：每 10% 或完成时才写，避免大列表的写放大
+  const step = Math.max(1, Math.ceil(sources.length / 10))
   await runtimeSet(db, 'internal.round', { kind: 'crawl', startedAt, done: 0, total: sources.length })
   await runPool(sources, cfg.crawl.concurrency, async (friend) => {
     try {
@@ -107,7 +109,9 @@ export async function runManualRound(db: Env['DB'], env: Env, cfg: AppConfig): P
       console.error(`[crawl] friend ${friend.id} unhandled:`, e)
     }
     done++
-    await runtimeSet(db, 'internal.round', { kind: 'crawl', startedAt, done, total: sources.length })
+    if (done === sources.length || done % step === 0) {
+      await runtimeSet(db, 'internal.round', { kind: 'crawl', startedAt, done, total: sources.length })
+    }
   })
 }
 
@@ -117,6 +121,7 @@ export async function runHealthRound(db: Env['DB'], env: Env, cfg: AppConfig): P
   if (sources.length === 0) return
   const startedAt = new Date().toISOString()
   let done = 0
+  const step = Math.max(1, Math.ceil(sources.length / 10))
   await runtimeSet(db, 'internal.round', { kind: 'health', startedAt, done: 0, total: sources.length })
   await runPool(sources, cfg.linkCheck.concurrency, async (friend) => {
     try {
@@ -125,7 +130,9 @@ export async function runHealthRound(db: Env['DB'], env: Env, cfg: AppConfig): P
       console.error(`[health] friend ${friend.id} unhandled:`, e)
     }
     done++
-    await runtimeSet(db, 'internal.round', { kind: 'health', startedAt, done, total: sources.length })
+    if (done === sources.length || done % step === 0) {
+      await runtimeSet(db, 'internal.round', { kind: 'health', startedAt, done, total: sources.length })
+    }
   })
 }
 
