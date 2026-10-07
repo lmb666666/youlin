@@ -210,11 +210,14 @@ export default function HealthPage() {
   }
 
   const settings = useSettings()
-  const pageSize = typeof settings['ui.pageSize'] === 'number' ? (settings['ui.pageSize'] as number) : 20
+  const pageSize = Math.max(1, typeof settings['ui.pageSize'] === 'number' ? (settings['ui.pageSize'] as number) : 20)
+  // 分页大小或行数变化后，页码可能越界（分页器会隐藏，届时无从翻回），这里夹住
+  const pageCount = Math.max(1, Math.ceil((friends ?? []).length / pageSize))
+  const pageIndex = Math.min(pagination.pageIndex, pageCount - 1)
   const table = useReactTable({
     data: friends ?? [],
     columns,
-    state: { sorting, pagination: { ...pagination, pageSize } },
+    state: { sorting, pagination: { pageSize, pageIndex } },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),

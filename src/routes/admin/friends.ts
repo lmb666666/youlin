@@ -146,7 +146,9 @@ export function friendRoutes() {
     }
     for (const [k, column] of Object.entries(col)) {
       const v = (d as Record<string, unknown>)[k]
-      if (v !== undefined) {
+      // 空作者不直接落库，走下面的站点名兜底
+      const deferred = k === 'author' && typeof v === 'string' && v.trim() === ''
+      if (v !== undefined && !deferred) {
         sets.push(`${column} = ?`)
         binds.push(v)
       }

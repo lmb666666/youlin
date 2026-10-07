@@ -155,7 +155,8 @@ export function importRoutes() {
       )
       for (let i = 0; i < missing.length; i++) {
         const id = Number(results[i]?.meta.last_row_id)
-        if (id > 0) groupIdByName.set(missing[i]!, id)
+        if (!id) return jsonError(500, 'group_create_failed', `分组「${missing[i]}」创建失败`)
+        groupIdByName.set(missing[i]!, id)
         createdGroups.add(missing[i]!)
       }
     }
@@ -195,9 +196,12 @@ export function importRoutes() {
     // 插入：batch 分片执行（upsert 语义与原实现一致，缺省字段保留旧值）
     let imported = 0
     let updated = 0
+    const seen = new Set<string>()
     const stmts = items.map((it) => {
       const groupId = groupIdByName.get(it.group ?? '未分组')!
-      const isUpdate = existed.has(it.link)
+      // 载荷内的重复链接只算一次新增，其后按更新计
+      const isUpdate = existed.has(it.link) || seen.has(it.link)
+      seen.add(it.link)
       if (isUpdate) updated++
       else imported++
       return c.env.DB.prepare(

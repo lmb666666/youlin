@@ -412,7 +412,7 @@ function Avatar({ friend }: { friend: Friend }) {
 
 export default function LinksPage() {
   const settings = useSettings()
-  const pageSize = typeof settings['ui.pageSize'] === 'number' ? (settings['ui.pageSize'] as number) : 20
+  const pageSize = Math.max(1, typeof settings['ui.pageSize'] === 'number' ? (settings['ui.pageSize'] as number) : 20)
   const [groups, setGroups] = useState<Group[] | null>(null)
   const [friends, setFriends] = useState<Friend[]>([])
   const [expanded, setExpanded] = useState<Set<number>>(new Set())

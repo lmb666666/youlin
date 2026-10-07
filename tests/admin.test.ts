@@ -301,6 +301,49 @@ describe('导入', () => {
     expect(body.skipped).toBe(1)
     expect(body.errors[0]!.index).toBe(0)
   })
+
+  it('批量导入：新条目追加到组尾，重复导入不改动既有顺序', async () => {
+    const body = (list: { author: string; url: string }[]) =>
+      JSON.stringify({ groups: [{ name: '批量', links: list }] })
+
+    // 首批 3 条（跨两条 batch 分片只看组内顺序）
+    const first = await authed('/api/admin/import', {
+      method: 'POST',
+      body: body([
+        { author: '甲', url: 'https://batch-1.example.com/' },
+        { author: '乙', url: 'https://batch-2.example.com/' },
+        { author: '丙', url: 'https://batch-3.example.com/' },
+      ]),
+    })
+    expect((await first.json()) as { imported: number }).toMatchObject({ imported: 3 })
+
+    // 第二批：含 1 条已存在（甲）+ 2 条新增
+    const second = await authed('/api/admin/import', {
+      method: 'POST',
+      body: body([
+        { author: '甲（改名）', url: 'https://batch-1.example.com/' },
+        { author: '丁', url: 'https://batch-4.example.com/' },
+        { author: '戊', url: 'https://batch-5.example.com/' },
+        { author: '戊', url: 'https://batch-5.example.com/' },
+      ]),
+    })
+    const secondBody = (await second.json()) as { imported: number; updated: number }
+    // 载荷内重复的戊：首见算新增，再见算更新
+    expect(secondBody).toMatchObject({ imported: 2, updated: 2 })
+
+    const list = await authed('/api/admin/friends')
+    const { friends } = (await list.json()) as { friends: { author: string; link: string; sort: number }[] }
+    const ordered = friends.filter((f) => f.link.startsWith('https://batch-')).map((f) => f.author)
+    // 甲 的更新不改变它在队首的位置，新增的排在原三条之后
+    expect(ordered).toEqual(['甲（改名）', '乙', '丙', '丁', '戊'])
+
+    // 公开接口顺序与之一致（按 sort 升序输出）
+    const pub = await (await SELF.fetch(`${BASE}/api/links`)).json() as {
+      groups: { name: string; links: { author: string }[] }[]
+    }
+    const group = pub.groups.find((g) => g.name === '批量')!
+    expect(group.links.map((l) => l.author)).toEqual(['甲（改名）', '乙', '丙', '丁', '戊'])
+  })
 })
 
 describe('设置中心', () => {
