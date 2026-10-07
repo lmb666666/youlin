@@ -143,7 +143,7 @@ export default function CirclePage() {
         <div>
           <h1 className="text-lg font-semibold">朋友圈</h1>
           <p className="text-sm text-muted-foreground">
-            Cron 每 5 分钟轮转一批（默认 3 站）；{status.dueCount}/{status.activeCount} 个源等待检查。
+            每 5 分钟抓一批；{status.dueCount}/{status.activeCount} 个源待检查。
           </p>
         </div>
         <div className="flex gap-2">
@@ -163,7 +163,7 @@ export default function CirclePage() {
           <CardContent className="pt-4">
             <div className="mb-2 flex items-center justify-between text-sm">
               <span>
-                {status.round.kind === 'health' ? '体检' : '抓取'}进行中（{status.round.kind}）
+                {status.round.kind === 'health' ? '体检进行中' : '抓取进行中'}
               </span>
               <span className="text-muted-foreground">
                 {status.round.done}/{status.round.total} · {progress}%
@@ -181,12 +181,12 @@ export default function CirclePage() {
           <CardTitle className="flex items-center gap-2 text-base">
             <Rss className="size-4" /> 抓取状态（{sources.length} 个源）
           </CardTitle>
-          <CardDescription>按下次检查时间排序；单源可手动抓取。</CardDescription>
+          <CardDescription>按下次检查时间排序。</CardDescription>
         </CardHeader>
         <CardContent>
           {sources.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              还没有配置 feed 的友链——在「友链」页为朋友填写 feed 地址后即可参与朋友圈。
+              还没有可抓取的源：在「友链」页补上 feed 即可。
             </p>
           ) : (
             <Table>
@@ -253,11 +253,11 @@ export default function CirclePage() {
           <CardTitle className="flex items-center gap-2 text-base">
             <Newspaper className="size-4" /> 最近文章（{articles.length}）
           </CardTitle>
-          <CardDescription>库内按发布时间倒序的最新文章；过旧文章由每日清理任务自动删除。</CardDescription>
+          <CardDescription>按发布时间倒序，过期文章自动清理。</CardDescription>
         </CardHeader>
         <CardContent>
           {articles.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">还没有文章——抓取成功后这里会显示朋友们的最近动态。</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">还没有抓到文章</p>
           ) : (
             <Table>
               <TableHeader>

@@ -37,7 +37,7 @@ export default function ImportPage() {
     if (!file) return
     void file.text().then((t) => {
       setText(t)
-      toast.info(`已读取 ${file.name}，检查无误后点「开始导入」`)
+      toast.info(`已读取 ${file.name}`)
     })
     e.target.value = ''
   }
@@ -47,17 +47,14 @@ export default function ImportPage() {
       <div>
         <h1 className="text-lg font-semibold">批量导入</h1>
         <p className="text-sm text-muted-foreground">
-          粘贴或上传现有友链数据（JSON），按 link 去重、缺省字段保留旧值，可反复执行。
+          粘贴或上传 JSON，按链接去重，可重复执行。
         </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-base">数据来源</CardTitle>
-          <CardDescription>
-            支持：<code className="text-xs">[{'{link, author, …}'}]</code> 数组、{'{ "groups": [{ "name", "links": [...] }] }'} 分组结构、
-            {'{ "friends": [...] }'} 包装结构。字段别名自动识别（url/site→link、rss/feed、img/avatar…）。
-          </CardDescription>
+          <CardDescription>支持条目数组、分组结构和常见字段别名（url / rss / img …）。</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">
           <Textarea

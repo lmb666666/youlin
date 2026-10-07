@@ -96,7 +96,7 @@ export default function ApplicationsPage() {
         <div>
           <h1 className="text-lg font-semibold">申请</h1>
           <p className="text-sm text-muted-foreground">
-            通过后自动进入接口一/二数据（含 feed 的会自动参与朋友圈抓取）。
+            通过后自动入库，接口立即生效。
           </p>
         </div>
         <div className="flex flex-wrap gap-1 rounded-lg border p-0.5">
@@ -229,7 +229,7 @@ function ApproveDialog(props: {
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>通过申请：{app?.siteName}</DialogTitle>
-          <DialogDescription>字段已自动填充，可编辑后再入库。</DialogDescription>
+          <DialogDescription>字段已预填，可直接修改。</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="grid gap-1.5">
@@ -312,7 +312,7 @@ function RejectDialog(props: {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>拒绝申请：{app?.siteName}</DialogTitle>
-          <DialogDescription>原因仅站长可见，会记录在申请条目中。</DialogDescription>
+          <DialogDescription>原因仅自己可见。</DialogDescription>
         </DialogHeader>
         <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="如：缺少反链 / 内容不符合" />
         <DialogFooter>

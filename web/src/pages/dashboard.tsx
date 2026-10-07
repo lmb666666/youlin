@@ -87,7 +87,7 @@ export default function DashboardPage() {
     <div className="grid gap-4 [&>*]:min-w-0">
       <div>
         <h1 className="text-lg font-semibold">总览</h1>
-        <p className="text-sm text-muted-foreground">站点数据与待办事项的一屏概览。</p>
+        <p className="text-sm text-muted-foreground">站点数据与待办一览。</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

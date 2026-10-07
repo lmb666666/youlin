@@ -157,13 +157,13 @@ export function applyRoutes() {
     )
       .bind(...variants)
       .first()
-    if (inFriends) return jsonError(409, 'duplicate_link', '该链接已在友链中，无需重复申请')
+    if (inFriends) return jsonError(409, 'duplicate_link', '该链接已在友链中')
     const inPending = await c.env.DB.prepare(
       `SELECT 1 AS x FROM applications WHERE status = 'pending' AND link IN (${variants.map(() => '?').join(',')}) LIMIT 1`,
     )
       .bind(...variants)
       .first()
-    if (inPending) return jsonError(409, 'already_pending', '该链接已有待审核申请，请耐心等待')
+    if (inPending) return jsonError(409, 'already_pending', '该链接已有待审申请')
 
     // 人机验证（apply.turnstile；密钥在部署级 Secret）
     if (cfg.apply.turnstile) {
@@ -183,7 +183,7 @@ export function applyRoutes() {
       backlink = await checkApplicantBacklink(c.env, cfg, input.link)
     }
     if (cfg.apply.backlinkPolicy === 'reject' && backlink.ok !== true) {
-      return jsonError(403, 'backlink_missing', '未在你的站点检测到指向我们的链接，请先添加友链后再申请', {
+      return jsonError(403, 'backlink_missing', '未检测到指向本站的链接，请先添加友链', {
         backlink: backlink.detail ?? '未检测',
       })
     }

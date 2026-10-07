@@ -6,7 +6,7 @@ import type { AppConfig } from './types'
  * 文案由 site.* / apply.* 配置驱动；提交走 fetch POST /apply（JSON）。
  */
 
-const DEFAULT_INTRO = '欢迎交换友链！请填写你的站点信息，我们会尽快审核。'
+const DEFAULT_INTRO = '欢迎交换友链！提交后会尽快审核。'
 const DEFAULT_SUCCESS = '申请已提交，等待站长审核。感谢你的来访！'
 
 function esc(s: string): string {
@@ -37,7 +37,7 @@ const FIELDS: FieldSpec[] = [
   { name: 'link', label: '站点链接', type: 'url', placeholder: 'https://example.com/' },
   { name: 'author', label: '站长昵称', type: 'text', placeholder: '昵称或笔名' },
   { name: 'avatar', label: '头像链接', type: 'url', placeholder: 'https://…/avatar.webp' },
-  { name: 'feed', label: 'RSS 订阅地址', type: 'url', placeholder: 'https://example.com/atom.xml', hint: '填写后可自动进入朋友圈' },
+  { name: 'feed', label: 'RSS 订阅地址', type: 'url', placeholder: 'https://example.com/atom.xml', hint: '填写后参与朋友圈' },
   { name: 'desc', label: '站点简介', type: 'textarea', placeholder: '一两句话介绍你的站点' },
   { name: 'contact', label: '联系方式', type: 'text', placeholder: '邮箱 / Telegram（仅站长可见）' },
   { name: 'note', label: '备注', type: 'textarea', placeholder: '想说的话（可选）' },
@@ -73,7 +73,7 @@ export function renderApplyPage(cfg: AppConfig): string {
   const turnstileBlock = turnstileReady
     ? `<div class="cf-turnstile" data-sitekey="${esc(siteKey)}" data-theme="auto"></div>`
     : turnstileEnabled
-      ? `<p class="notice">人机验证尚未配置完成，暂时无法提交，请联系站长。</p>`
+      ? `<p class="notice">人机验证未配置，暂无法提交。</p>`
       : ''
 
   const body = disabled
@@ -153,7 +153,7 @@ ${siteUrl ? `<p class="foot">← 返回 <a href="${esc(siteUrl)}">${siteName}</a
       var res = await fetch('/apply', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
       var payload = await res.json().catch(function(){ return null; });
       if (res.ok) {
-        show('ok', ${jsonForScript(success)} + (payload && payload.backlink && payload.backlink.ok ? '（已检测到你的站点有我们的链接，感谢！）' : ''));
+        show('ok', ${jsonForScript(success)} + (payload && payload.backlink && payload.backlink.ok ? '（已检测到反链，谢谢！）' : ''));
         form.querySelectorAll('input,textarea').forEach(function(el){ el.value = ''; });
       } else {
         var msg = (payload && payload.error && payload.error.message) || ('提交失败（' + res.status + '）');

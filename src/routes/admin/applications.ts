@@ -167,7 +167,7 @@ export function applicationRoutes() {
     if (!parsed.success) return jsonError(400, 'validation_failed', '字段校验失败')
     const result = await triggerRebuild(c.env, cfg, parsed.data.reason ?? 'manual')
     if (result.triggered) return c.json({ ok: true, provider: result.provider })
-    if (result.debounced) return jsonError(429, 'rebuild_debounced', '触发过于频繁（防抖中），请稍后再试')
+    if (result.debounced) return jsonError(429, 'rebuild_debounced', '触发过于频繁，请稍后再试')
     if (result.error === 'webhook_url_missing' || result.error === 'github_repo_missing' || result.error === 'github_pat_missing') {
       return jsonError(400, 'rebuild_misconfigured', `重建配置不完整：${result.error}`)
     }

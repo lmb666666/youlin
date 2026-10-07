@@ -50,14 +50,14 @@
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `crawl.enabled` | `true` | 抓取总开关。关闭后 Cron 不再抓取，接口二仍输出库内数据。 |
-| `crawl.batchSize` | `3` | 每轮站点数。与 Cron 频率共同决定刷新周期：每 5 分钟 3 站，60 源约 100 分钟一圈。 |
+| `crawl.enabled` | `true` | 抓取总开关。关闭后停止抓取，已有数据照常输出。 |
+| `crawl.batchSize` | `3` | 每轮站点数。与 Cron 频率共同决定刷新周期。 |
 | `crawl.maxPerFriend` | `5` | 每站篇数上限。每个源只保留最新 N 篇。 |
 | `crawl.outputMaxArticles` | `150` | 输出总量上限。接口二按发布时间保留最新 N 篇。 |
 | `crawl.futureToleranceDays` | `2` | 未来时间容差（天）。文章发布时间晚于当前时间超过该天数将被丢弃。 |
-| `crawl.retentionDays` | `90` | 库内保留天数。超期文章由每日清理任务删除。 |
+| `crawl.retentionDays` | `90` | 库内保留天数。超期文章每日自动清理。 |
 | `crawl.timeoutSeconds` | `15` | 单源超时（秒）。抓取单个源的超时时间。 |
-| `crawl.userAgent` | `Youlin/1.0 (+{site.url})` | 抓取 UA。{site.url} 会替换为 site.url 实际值。 |
+| `crawl.userAgent` | `Youlin/1.0 (+{site.url})` | 抓取 UA。{site.url} 会替换为主站地址。 |
 | `crawl.concurrency` | `5` | 手动全量并发。手动触发抓取一轮时的并发数。 |
 
 ### 体检（`linkCheck.*`）
@@ -66,12 +66,12 @@
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `linkCheck.enabled` | `true` | 体检总开关。关闭后不再检测，已有结果仍会输出。 |
+| `linkCheck.enabled` | `true` | 体检总开关。关闭后停止检测，已有结果照常显示。 |
 | `linkCheck.maxAgeHours` | `24` | 复查间隔（小时）。同一友链两次检测的最小间隔。 |
 | `linkCheck.timeoutSeconds` | `15` | 单次超时（秒）。体检单个源的超时时间。 |
 | `linkCheck.concurrency` | `10` | 全量检测并发。手动全量体检时的并发数。 |
 | `linkCheck.statusApiUrl` | 空 | 状态 API 兜底。第三方状态检测地址，{url} 占位符，留空关闭。 |
-| `linkCheck.backoffLadder` | `[[10,120],[30,240],[60,360]]` | 失联退避阶梯。[[失联天数, 复查间隔小时]，…] 升序；默认 10 天→120h、30 天→240h、60 天→360h。 |
+| `linkCheck.backoffLadder` | `[[10,120],[30,240],[60,360]]` | 失联退避阶梯。[失联天数, 复查间隔小时]，升序排列。 |
 
 ### 反链检测（`backlink.*`）
 
@@ -88,7 +88,7 @@
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `proxy.url` | 空 | 代理地址。形如 https://proxy.example.com/ ，实际请求为 代理地址 + 目标 URL。 |
+| `proxy.url` | 空 | 代理地址。实际请求为 该地址 + 目标 URL。 |
 | `proxy.mode` | `fallback` | 代理模式（off / fallback / always）。off 关闭 / fallback 直连失败再走代理 / always 始终走代理。 |
 
 ### 友链申请（`apply.*`）
@@ -99,11 +99,11 @@
 | --- | --- | --- |
 | `apply.enabled` | `true` | 申请通道。关闭后 /apply 显示停用提示，POST /apply 返回 403。 |
 | `apply.rateLimitPerDay` | `3` | 每 IP 每天上限。按天限流，超出返回 429。 |
-| `apply.turnstile` | `true` | 人机验证。Cloudflare Turnstile；关闭需自担垃圾提交风险。 |
+| `apply.turnstile` | `true` | 人机验证。关闭后提交不再验证人机。 |
 | `apply.turnstileSiteKey` | 空 | Turnstile Site Key。公开值；Secret（TURNSTILE_SECRET）在部署级配置。 |
 | `apply.backlinkPolicy` | `mark` | 反链策略（mark / reject / off）。mark 仅标记 / reject 未检测到反链即拒绝 / off 不检测。 |
 | `apply.autoApprove` | `false` | 自动通过。提交即入库（不推荐，垃圾提交无人工拦截）。 |
-| `apply.requiredFields` | `["siteName","link"]` | 必填字段。申请表单必填字段集（siteName / link / author / avatar / feed / desc / contact / note）。 |
+| `apply.requiredFields` | `["siteName","link"]` | 必填字段。申请表单的必填字段。 |
 | `apply.intro` | 空 | 申请页说明。留空使用内置文案。 |
 | `apply.successMessage` | 空 | 提交成功提示。留空使用内置文案。 |
 
@@ -124,12 +124,12 @@
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `rebuild.enabled` | `false` | 启用重建。运行时接入无需重建，保持关闭。 |
+| `rebuild.enabled` | `false` | 启用重建。运行时接入无需开启。 |
 | `rebuild.provider` | `webhook` | 触发方式（webhook / github_dispatch）。webhook 通用 POST / github_dispatch 仓库事件。 |
-| `rebuild.webhookUrl` | 空 | Webhook 地址。provider=webhook 时的目标 URL（兼容 Pages / Vercel Deploy Hook）。 |
+| `rebuild.webhookUrl` | 空 | Webhook 地址。provider=webhook 时的目标 URL。 |
 | `rebuild.githubRepo` | 空 | GitHub 仓库。provider=github_dispatch 时，owner/name。 |
 | `rebuild.eventType` | `friends-updated` | 事件类型。repository_dispatch 的事件名。 |
-| `rebuild.auto` | `false` | 自动触发。保存友链 / 通过申请后自动触发重建。 |
+| `rebuild.auto` | `false` | 自动触发。数据变更后自动触发。 |
 | `rebuild.debounceSeconds` | `60` | 防抖（秒）。两次触发之间的最小间隔。 |
 
 ### 界面（`ui.*`）
@@ -139,7 +139,7 @@
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
 | `ui.theme` | `system` | 主题（system / light / dark）。跟随系统 / 浅色 / 深色。 |
-| `ui.accentColor` | 空 | 强调色。shadcn CSS 变量的主色，留空使用默认主题色。 |
+| `ui.accentColor` | 空 | 强调色。管理台主色，留空用默认。 |
 | `ui.pageSize` | `20` | 分页大小。列表页每页条数。 |
 
 ### 安全（`security.*`）

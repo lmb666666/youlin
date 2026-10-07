@@ -164,7 +164,7 @@ export default function HealthPage() {
         if (pollRef.current) {
           window.clearInterval(pollRef.current)
           pollRef.current = null
-          toast.info('体检已结束或状态未知，请手动刷新')
+          toast.info('体检状态未知，请手动刷新')
           void reload()
         }
       }
@@ -186,7 +186,7 @@ export default function HealthPage() {
         toast.info('没有需要体检的友链')
         return
       }
-      toast.success(`已开始体检 ${r.started} 个站点，完成后自动刷新`)
+      toast.success(`已开始体检 ${r.started} 个站点`)
       attempts.current = 0
       setRunning(true)
       pollRef.current = window.setInterval(() => void pollStatus(), 1500)
@@ -230,7 +230,7 @@ export default function HealthPage() {
         <div>
           <h1 className="text-lg font-semibold">体检</h1>
           <p className="text-sm text-muted-foreground">
-            三路检测（RSS 优先 → 首页兜底 → 状态 API）；结果输出到接口一的 health 字段。
+            RSS 优先逐站检测，结果同步到公开接口。
           </p>
         </div>
         <div className="flex gap-2">
@@ -248,7 +248,7 @@ export default function HealthPage() {
           <CardTitle className="flex items-center gap-2 text-base">
             <HeartPulse className="size-4" /> 全部友链（{friends.length}）
           </CardTitle>
-          <CardDescription>点击表头排序；失联源排在前面。</CardDescription>
+          <CardDescription>失联源排在前面，点击表头排序。</CardDescription>
         </CardHeader>
         <CardContent>
           {friends.length === 0 ? (

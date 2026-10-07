@@ -135,7 +135,7 @@ const data = await res.json()
       <div>
         <h1 className="text-lg font-semibold">接入</h1>
         <p className="text-sm text-muted-foreground">
-          三个对外接口的地址与用法。在你的页面里 fetch 即可渲染，改数据无需重新构建。
+          三个对外接口的地址与示例，可直接复制使用。
         </p>
       </div>
 
@@ -199,17 +199,17 @@ const data = await res.json()
             </CardHeader>
             <CardContent>
               <ul className="grid gap-2 text-sm text-muted-foreground">
-                <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-emerald-600" /> 直接在浏览器打开两个数据接口，返回预期 JSON</li>
-                <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-emerald-600" /> 博客页面 fetch 无跨域报错（CORS 默认全开；收紧后需加白名单）</li>
-                <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-emerald-600" /> 接口加 5–8 秒超时与降级展示，接口异常时页面不白屏</li>
-                <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-emerald-600" /> 管理台改一条友链，刷新博客页面能看到变化（缓存期内最长等 {cfg.cacheSeconds} 秒）</li>
+                <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-emerald-600" /> 浏览器直接打开数据接口，返回正常 JSON</li>
+                <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-emerald-600" /> 页面 fetch 无跨域报错</li>
+                <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-emerald-600" /> 接口请求加超时与降级，异常时不白屏</li>
+                <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-emerald-600" /> 管理台改动后刷新可见（缓存最长 {cfg.cacheSeconds} 秒）</li>
               </ul>
             </CardContent>
           </Card>
 
           <p className="pb-4 text-center text-xs text-muted-foreground">
             <Send className="mr-1 inline size-3" />
-            申请页地址可直接挂在博客的「申请友链」按钮上：{origin}/apply
+            「申请友链」按钮指向：{origin}/apply
           </p>
         </>
       )}

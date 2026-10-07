@@ -94,7 +94,7 @@ export default function SettingsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold">设置</h1>
-          <p className="text-sm text-muted-foreground">全部配置都有默认值，开箱即用；改动保存后立即生效。</p>
+          <p className="text-sm text-muted-foreground">所有配置都有默认值，保存后立即生效。</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" asChild>

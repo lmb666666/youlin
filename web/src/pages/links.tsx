@@ -96,7 +96,7 @@ function FriendDialog(props: {
   // 自动探测：发现 RSS、抓 favicon、站点标题、og:image 头像建议（空字段才回填，不覆盖已填内容）
   async function probe() {
     if (!values || probing || !/^https?:\/\//.test(values.link)) {
-      if (values && !/^https?:\/\//.test(values.link)) toast.info('请先填写站点链接（http/https）')
+      if (values && !/^https?:\/\//.test(values.link)) toast.info('请先填写站点链接')
       return
     }
     setProbing(true)
@@ -112,7 +112,7 @@ function FriendDialog(props: {
       if (p.icon && !values.icon) { set('icon', p.icon); filled++ }
       if (p.avatar && !values.avatar) { set('avatar', p.avatar); filled++ }
       if (filled > 0) toast.success(`探测完成，已回填 ${filled} 项`)
-      else if (p.feed || p.title || p.icon || p.avatar) toast.info('探测到的内容与现有字段相同，未改动')
+      else if (p.feed || p.title || p.icon || p.avatar) toast.info('没有需要回填的内容')
       else toast.info('未探测到可回填的信息')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '探测失败')
@@ -163,7 +163,7 @@ function FriendDialog(props: {
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{editing ? '编辑友链' : '添加友链'}</DialogTitle>
-          <DialogDescription>填写站点信息；feed 留空则不参与朋友圈抓取。</DialogDescription>
+          <DialogDescription>feed 留空则不参与朋友圈。</DialogDescription>
         </DialogHeader>
         {values && (
           <div className="grid gap-3">
@@ -510,7 +510,7 @@ export default function LinksPage() {
         method: 'PATCH',
         body: JSON.stringify({ status: f.status === 'hidden' ? 'active' : 'hidden' }),
       })
-      toast.success(f.status === 'hidden' ? '已恢复显示' : '已隐藏（接口不再输出）')
+      toast.success(f.status === 'hidden' ? '已恢复显示' : '已隐藏')
       void reload()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '操作失败')
@@ -547,7 +547,7 @@ export default function LinksPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-lg font-semibold">友链</h1>
-          <p className="text-sm text-muted-foreground">拖拽排序；改动保存后接口即时生效。</p>
+          <p className="text-sm text-muted-foreground">拖拽排序，保存后立即生效。</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
@@ -575,7 +575,7 @@ export default function LinksPage() {
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
             <TriangleAlert className="size-8" />
-            <p>还没有分组。先「新建分组」，再添加友链；也可以在「导入」页批量迁入。</p>
+            <p>先新建分组，或到「导入」页批量迁入。</p>
           </CardContent>
         </Card>
       )}
@@ -666,8 +666,8 @@ export default function LinksPage() {
             <AlertDialogTitle>确认删除？</AlertDialogTitle>
             <AlertDialogDescription>
               {deleteTarget?.kind === 'group'
-                ? `将删除分组「${deleteTarget.name}」及其下全部友链与抓取状态，不可恢复。`
-                : `将删除友链「${deleteTarget?.name}」及其文章与状态，不可恢复。`}
+                ? `将删除「${deleteTarget.name}」及其全部友链，不可恢复。`
+                : `将删除「${deleteTarget?.name}」及其文章，不可恢复。`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

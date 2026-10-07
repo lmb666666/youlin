@@ -22,7 +22,7 @@ export function settingsRoutes() {
   app.put('/api/admin/settings', async (c) => {
     const body = await readJson(c)
     if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-      return jsonError(400, 'invalid_body', '请求体须为 JSON 对象（键为配置项，值为新值）')
+      return jsonError(400, 'invalid_body', '请求体须为 JSON 对象')
     }
     const patch = body as Record<string, unknown>
     const unknownKeys = Object.keys(patch).filter((k) => !(k in fieldSchemas))
