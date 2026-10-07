@@ -72,7 +72,7 @@ describe('接口一 GET /api/links 契约', () => {
       since: '2024-08-25',
       comment: '好友，数码科技方向',
     })
-    await createFriend(gid, { author: 'Aki', link: 'https://aki.example.com/', since: '2025-01-02' })
+    await createFriend(gid, { author: 'Aki', title: 'Aki 的小站', link: 'https://aki.example.com/', since: '2025-01-02' })
 
     // 体检摘要：直接写 source_state
     await env.DB.prepare(
@@ -116,10 +116,10 @@ describe('接口一 GET /api/links 契约', () => {
     expect(health.unreachableDays).toBeNull()
     expect(health.checkedAt).toBe('2026-10-05T13:55:00Z')
 
-    // 可选字段无值不输出
+    // 可选字段无值不输出（title 现为必填，始终存在；feed/health 等仍按需输出）
     const minimal = g.links[1]!
     expect(minimal.author).toBe('Aki')
-    expect('title' in minimal).toBe(false)
+    expect(minimal.title).toBe('Aki 的小站')
     expect('feed' in minimal).toBe(false)
     expect('health' in minimal).toBe(false)
   })
@@ -127,7 +127,7 @@ describe('接口一 GET /api/links 契约', () => {
   it('?group= 过滤精确匹配；未命中返回空数组', async () => {
     await createGroup('技术区')
     const gid = await createGroup('生活区')
-    await createFriend(gid, { author: 'Bo', link: 'https://bo.example.com/', since: '2026-01-01' })
+    await createFriend(gid, { author: 'Bo', title: 'Bo 的站', link: 'https://bo.example.com/', since: '2026-01-01' })
 
     const hit = await SELF.fetch('https://example.com/api/links?group=' + encodeURIComponent('生活区'))
     const hitBody = (await hit.json()) as { groups: { name: string; links: unknown[] }[] }
@@ -144,7 +144,7 @@ describe('接口一 GET /api/links 契约', () => {
 
   it('hidden 友链默认不输出；api.includeHidden=true 时输出', async () => {
     const gid = await createGroup('隐藏测试')
-    await createFriend(gid, { author: 'Hide', link: 'https://hide.example.com/', since: '2026-02-02', status: 'hidden' })
+    await createFriend(gid, { author: 'Hide', title: '隐藏站', link: 'https://hide.example.com/', since: '2026-02-02', status: 'hidden' })
     const res = await SELF.fetch('https://example.com/api/links')
     const body = (await res.json()) as { groups: { links: unknown[] }[] }
     expect(validate(body)).toBe(true)

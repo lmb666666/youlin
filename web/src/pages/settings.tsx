@@ -82,7 +82,7 @@ export default function SettingsPage() {
 
   if (!schema || !values) {
     return (
-      <div className="mx-auto grid w-full max-w-3xl gap-4">
+      <div className="mx-auto grid w-full max-w-3xl gap-4 [&>*]:min-w-0">
         <Skeleton className="h-16" />
         <Skeleton className="h-96" />
       </div>
@@ -90,7 +90,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-3xl gap-4">
+    <div className="mx-auto grid w-full max-w-3xl gap-4 [&>*]:min-w-0">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold">设置</h1>

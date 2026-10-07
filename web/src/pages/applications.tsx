@@ -91,7 +91,7 @@ export default function ApplicationsPage() {
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4 [&>*]:min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold">申请</h1>
@@ -99,7 +99,7 @@ export default function ApplicationsPage() {
             通过后自动进入接口一/二数据（含 feed 的会自动参与朋友圈抓取）。
           </p>
         </div>
-        <div className="flex gap-1 rounded-lg border p-0.5">
+        <div className="flex flex-wrap gap-1 rounded-lg border p-0.5">
           {TABS.map((t) => (
             <Button
               key={t.value}

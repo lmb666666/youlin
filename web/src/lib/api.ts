@@ -159,6 +159,13 @@ export interface Application {
   reviewedAt?: string
 }
 
+export interface AdminStats {
+  friends: { active: number; hidden: number; unreachable: number }
+  circle: { sources: number; due: number }
+  articles: { total: number; lastArticleAt: string | null }
+  applications: { pending: number; total: number }
+}
+
 export interface ImportResult {
   imported: number
   updated: number

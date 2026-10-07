@@ -189,19 +189,19 @@ function FriendDialog(props: {
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="作者 *">
-                <Input value={values.author} onChange={(e) => set('author', e.target.value)} placeholder="站长名" />
-              </Field>
-              <Field label="趣称">
-                <Input value={values.nickname ?? ''} onChange={(e) => set('nickname', e.target.value)} placeholder="网站趣称" />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="站点标题">
+              <Field label="站点名 *">
                 <Input value={values.title ?? ''} onChange={(e) => set('title', e.target.value)} placeholder="站点名" />
               </Field>
               <Field label="订阅日期 *">
                 <Input type="date" value={values.since} onChange={(e) => set('since', e.target.value)} />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="作者">
+                <Input value={values.author} onChange={(e) => set('author', e.target.value)} placeholder="留空则显示站点名" />
+              </Field>
+              <Field label="趣称">
+                <Input value={values.nickname ?? ''} onChange={(e) => set('nickname', e.target.value)} placeholder="网站趣称" />
               </Field>
             </div>
             <Field label="站点链接 *">
@@ -242,7 +242,7 @@ function FriendDialog(props: {
           </Button>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-            <Button onClick={() => void submit()} disabled={busy || !values?.author || !values?.link || !values?.since}>
+            <Button onClick={() => void submit()} disabled={busy || !values?.title || !values?.link || !values?.since}>
               {busy ? '保存中…' : '保存'}
             </Button>
           </div>
@@ -543,13 +543,13 @@ export default function LinksPage() {
   }
 
   return (
-    <div className="grid gap-4">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="grid gap-4 [&>*]:min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
           <h1 className="text-lg font-semibold">友链</h1>
           <p className="text-sm text-muted-foreground">拖拽排序；改动保存后接口即时生效。</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input

@@ -196,7 +196,7 @@ describe('重建触发', () => {
     const { id: gid } = (await g.json()) as { id: number }
     await authed('/api/admin/friends', {
       method: 'POST',
-      body: JSON.stringify({ groupId: gid, author: 'Auto', link: 'https://auto-friend.example.com/', since: '2026-01-01' }),
+      body: JSON.stringify({ groupId: gid, author: 'Auto', title: '自动站', link: 'https://auto-friend.example.com/', since: '2026-01-01' }),
     })
     await new Promise((r) => setTimeout(r, 50)) // 等 waitUntil 完成
     expect(calls).toContain('https://ci.example.com/hook')

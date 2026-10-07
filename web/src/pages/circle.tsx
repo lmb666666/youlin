@@ -138,7 +138,7 @@ export default function CirclePage() {
   const progress = status.round && status.round.total > 0 ? Math.round((status.round.done / status.round.total) * 100) : 0
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4 [&>*]:min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold">朋友圈</h1>

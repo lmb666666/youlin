@@ -43,7 +43,7 @@ export default function ImportPage() {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-3xl gap-4">
+    <div className="mx-auto grid w-full max-w-3xl gap-4 [&>*]:min-w-0">
       <div>
         <h1 className="text-lg font-semibold">批量导入</h1>
         <p className="text-sm text-muted-foreground">

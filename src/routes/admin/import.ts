@@ -81,7 +81,7 @@ function normalizeItem(raw: unknown, fallbackGroup: string | null, index: number
   }
   return {
     group: pickString(item, ALIASES.group) ?? fallbackGroup,
-    author: pickString(item, ALIASES.author) ?? hostOf(link),
+    author: pickString(item, ALIASES.author) ?? pickString(item, ALIASES.title) ?? hostOf(link),
     title: pickString(item, ALIASES.title),
     desc: pickString(item, ALIASES.desc),
     link,

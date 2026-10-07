@@ -126,7 +126,7 @@ describe('分组与友链 CRUD', () => {
 
     const dup = await authed('/api/admin/friends', {
       method: 'POST',
-      body: JSON.stringify({ groupId: gid, author: 'X', link: 'https://blog.liang.one/', since: '2026-01-01' }),
+      body: JSON.stringify({ groupId: gid, author: 'X', title: '重复站', link: 'https://blog.liang.one/', since: '2026-01-01' }),
     })
     expect(dup.status).toBe(409)
     expect(await dup.json()).toMatchObject({ error: { code: 'duplicate_link' } })
@@ -134,7 +134,7 @@ describe('分组与友链 CRUD', () => {
     // 非法 link 400
     const bad = await authed('/api/admin/friends', {
       method: 'POST',
-      body: JSON.stringify({ groupId: gid, author: 'X', link: 'ftp://nope', since: '2026-01-01' }),
+      body: JSON.stringify({ groupId: gid, author: 'X', title: '坏链接站', link: 'ftp://nope', since: '2026-01-01' }),
     })
     expect(bad.status).toBe(400)
 
@@ -162,12 +162,52 @@ describe('分组与友链 CRUD', () => {
     expect(f2.find((x) => x.id === id)).toBeUndefined()
   })
 
+  it('站点名必填；作者缺省用站点名兜底；作者可清空回退站点名', async () => {
+    const g = await authed('/api/admin/groups', { method: 'POST', body: JSON.stringify({ name: '兜底组' }) })
+    const { id: gid } = (await g.json()) as { id: number }
+
+    // 缺站点名 → 400
+    const noTitle = await authed('/api/admin/friends', {
+      method: 'POST',
+      body: JSON.stringify({ groupId: gid, author: '某人', link: 'https://t1.example.com/', since: '2026-01-01' }),
+    })
+    expect(noTitle.status).toBe(400)
+
+    // 缺作者 → author = 站点名
+    const f1 = await authed('/api/admin/friends', {
+      method: 'POST',
+      body: JSON.stringify({ groupId: gid, title: '只有站名', link: 'https://t2.example.com/', since: '2026-01-01' }),
+    })
+    expect(f1.status).toBe(201)
+    const { id: id1 } = (await f1.json()) as { id: number }
+    const list = await authed('/api/admin/friends')
+    const row1 = ((await list.json()) as { friends: { id: number; author: string; title?: string }[] }).friends.find((f) => f.id === id1)!
+    expect(row1.author).toBe('只有站名')
+
+    // 作者清空（PATCH author: ''）→ 回退站点名
+    const f2 = await authed('/api/admin/friends', {
+      method: 'POST',
+      body: JSON.stringify({ groupId: gid, title: '站名优先', author: '原作者', link: 'https://t3.example.com/', since: '2026-01-01' }),
+    })
+    const { id: id2 } = (await f2.json()) as { id: number }
+    const patch = await authed(`/api/admin/friends/${id2}`, { method: 'PATCH', body: JSON.stringify({ author: '' }) })
+    expect(patch.status).toBe(200)
+    const list2 = await authed('/api/admin/friends')
+    const row2 = ((await list2.json()) as { friends: { id: number; author: string }[] }).friends.find((f) => f.id === id2)!
+    expect(row2.author).toBe('站名优先')
+
+    // 指定作者则原样保留
+    const list3 = await authed('/api/admin/friends')
+    const row3 = ((await list3.json()) as { friends: { id: number; author: string }[] }).friends.find((f) => f.id === id1)!
+    expect(row3.author).toBe('只有站名')
+  })
+
   it('删除分组清理文章与抓取状态（无孤儿行）', async () => {
     const g = await authed('/api/admin/groups', { method: 'POST', body: JSON.stringify({ name: '待删除' }) })
     const { id: gid } = (await g.json()) as { id: number }
     const f = await authed('/api/admin/friends', {
       method: 'POST',
-      body: JSON.stringify({ groupId: gid, author: 'Orphan', link: 'https://orphan.example.com/', since: '2026-01-01' }),
+      body: JSON.stringify({ groupId: gid, author: 'Orphan', title: '孤儿测试站', link: 'https://orphan.example.com/', since: '2026-01-01' }),
     })
     const { id: fid } = (await f.json()) as { id: number }
     await env.DB.batch([
@@ -194,7 +234,7 @@ describe('分组与友链 CRUD', () => {
     for (const [i, author] of ['A', 'B', 'C'].entries()) {
       const r = await authed('/api/admin/friends', {
         method: 'POST',
-        body: JSON.stringify({ groupId: gid, author, link: `https://${author}.example.com/`, since: '2026-01-0' + (i + 1) }),
+        body: JSON.stringify({ groupId: gid, author, title: `站 ${author}`, link: `https://${author}.example.com/`, since: '2026-01-0' + (i + 1) }),
       })
       ids.push(((await r.json()) as { id: number }).id)
     }
@@ -325,7 +365,7 @@ describe('导出', () => {
     await authed('/api/admin/friends', {
       method: 'POST',
       body: JSON.stringify({
-        groupId: gid, author: 'X', link: 'https://x.example.com/', since: '2026-03-03',
+        groupId: gid, author: 'X', title: '导出站', link: 'https://x.example.com/', since: '2026-03-03',
         status: 'hidden', nickname: '小站', feed: 'https://x.example.com/feed.xml', archs: ['Nuxt'],
       }),
     })

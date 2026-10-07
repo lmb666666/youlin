@@ -16,9 +16,10 @@ function maybeAutoRebuild(c: Context<AppEnv>, reason: string): void {
 
 const friendInput = z.object({
   groupId: z.number().int().positive(),
-  author: z.string().min(1).max(200),
+  // 站点名必填；作者选填，缺省时后端用站点名兜底（保持 author 列 NOT NULL 与公开契约不变）
+  title: z.string().min(1).max(200),
+  author: z.string().max(200).optional().nullable(),
   nickname: z.string().max(200).optional().nullable(),
-  title: z.string().max(200).optional().nullable(),
   desc: z.string().max(2000).optional().nullable(),
   link: httpUrl,
   feed: httpUrl.optional().nullable(),
@@ -32,9 +33,9 @@ const friendInput = z.object({
   sort: z.number().int().optional(),
 })
 const friendPatch = friendInput.partial().extend({
-  // 这四列 NOT NULL，不接受 null
+  // 这四列 NOT NULL，不接受 null（author 的空串由兜底逻辑转换）
   groupId: z.number().int().positive().optional(),
-  author: z.string().min(1).max(200).optional(),
+  author: z.string().max(200).optional(),
   link: httpUrl.optional(),
   since: dateYMD.optional(),
 })
@@ -93,6 +94,7 @@ export function friendRoutes() {
     const d = parsed.data
 
     if (!(await groupExists(c, d.groupId))) return jsonError(400, 'unknown_group', '分组不存在')
+    const author = d.author && d.author.trim() !== '' ? d.author.trim() : d.title
 
     const sort =
       d.sort ??
@@ -106,7 +108,7 @@ export function friendRoutes() {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
         .bind(
-          d.groupId, d.author, d.nickname ?? null, d.title ?? null, d.desc ?? null, d.link,
+          d.groupId, author, d.nickname ?? null, d.title, d.desc ?? null, d.link,
           d.feed ?? null, d.icon ?? null, d.avatar ?? null, d.archs ? JSON.stringify(d.archs) : null,
           d.since, d.comment ?? null, d.inCircle === false ? 0 : 1, d.status ?? 'active', sort,
         )
@@ -127,8 +129,10 @@ export function friendRoutes() {
     const parsed = friendPatch.safeParse(body)
     if (!parsed.success) return jsonError(400, 'validation_failed', '字段校验失败', fieldDetails(parsed.error.issues))
     const d = parsed.data
-    const exists = await c.env.DB.prepare('SELECT id FROM friends WHERE id = ?').bind(id).first()
-    if (!exists) return jsonError(404, 'not_found', '友链不存在')
+    const existing = await c.env.DB.prepare('SELECT author, title FROM friends WHERE id = ?')
+      .bind(id)
+      .first<{ author: string; title: string | null }>()
+    if (!existing) return jsonError(404, 'not_found', '友链不存在')
     if (d.groupId !== undefined && !(await groupExists(c, d.groupId))) {
       return jsonError(400, 'unknown_group', '分组不存在')
     }
@@ -146,6 +150,15 @@ export function friendRoutes() {
         sets.push(`${column} = ?`)
         binds.push(v)
       }
+    }
+    if (d.author !== undefined && d.author.trim() === '') {
+      // 作者清空 → 用站点名兜底（新提交的 title 优先，其次原值）
+      const fallback = d.title ?? existing.title
+      if (!fallback || fallback.trim() === '') {
+        return jsonError(400, 'author_required', '作者与站点名不能同时为空')
+      }
+      sets.push('author = ?')
+      binds.push(fallback.trim())
     }
     if (d.archs !== undefined) {
       sets.push('archs = ?')
