@@ -464,6 +464,8 @@ export default function LinksPage() {
       list.push(f)
       map.set(f.groupId, list)
     }
+    // 渲染顺序以 sort 为准：拖拽只改了 sort 字段，数组顺序可能还是旧的
+    for (const list of map.values()) list.sort((a, b) => a.sort - b.sort || a.id - b.id)
     return map
   }, [friends, matches])
 
@@ -479,7 +481,8 @@ export default function LinksPage() {
   async function handleDragEnd(groupId: number, event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
-    const list = friendsOf.get(groupId) ?? []
+    // 排序以整组为准：搜索是过滤视图，只重排命中子集会让未命中的行 sort 与命中的重叠
+    const list = friends.filter((f) => f.groupId === groupId).sort((a, b) => a.sort - b.sort || a.id - b.id)
     const from = list.findIndex((f) => f.id === active.id)
     const to = list.findIndex((f) => f.id === over.id)
     if (from < 0 || to < 0) return
