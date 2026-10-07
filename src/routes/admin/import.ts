@@ -139,33 +139,70 @@ export function importRoutes() {
       if (n) items.push(n)
     })
 
-    // 分组：按名查/建（导入形状里给组名即建组；无组名的归「未分组」）
     const createdGroups = new Set<string>()
-    const groupIdByName = new Map<string, number>()
-    const ensureGroup = async (name: string): Promise<number> => {
-      const known = groupIdByName.get(name)
-      if (known !== undefined) return known
-      const row = await c.env.DB.prepare('SELECT id FROM groups WHERE name = ?').bind(name).first<{ id: number }>()
-      if (row) {
-        groupIdByName.set(name, row.id)
-        return row.id
+
+    // 分组：一次读全量组表，缺的一次 batch 补齐
+    const names = [...new Set(items.map((it) => it.group ?? '未分组'))]
+    const existingGroups = await c.env.DB.prepare('SELECT id, name FROM groups').all<{ id: number; name: string }>()
+    const groupIdByName = new Map(existingGroups.results.map((g) => [g.name, g.id]))
+    const missing = names.filter((n) => !groupIdByName.has(n))
+    if (missing.length > 0) {
+      const nextSort = existingGroups.results.length
+      const results = await c.env.DB.batch(
+        missing.map((name, i) =>
+          c.env.DB.prepare('INSERT INTO groups (name, sort) VALUES (?, ?)').bind(name, nextSort + i),
+        ),
+      )
+      for (let i = 0; i < missing.length; i++) {
+        const id = Number(results[i]?.meta.last_row_id)
+        if (id > 0) groupIdByName.set(missing[i]!, id)
+        createdGroups.add(missing[i]!)
       }
-      const next = await c.env.DB.prepare('SELECT COALESCE(MAX(sort), -1) + 1 AS next FROM groups').first<{ next: number }>()
-      const res = await c.env.DB.prepare('INSERT INTO groups (name, sort) VALUES (?, ?)').bind(name, next?.next ?? 0).run()
-      const id = Number(res.meta.last_row_id)
-      groupIdByName.set(name, id)
-      createdGroups.add(name)
-      return id
     }
 
+    // 已存在链接：一次 IN 查询拿全量集合
+    const links = items.map((it) => it.link)
+    const existed = new Set<string>()
+    for (let i = 0; i < links.length; i += 100) {
+      const chunk = links.slice(i, i + 100)
+      const rows = await c.env.DB.prepare(
+        `SELECT link FROM friends WHERE link IN (${chunk.map(() => '?').join(',')})`,
+      )
+        .bind(...chunk)
+        .all<{ link: string }>()
+      for (const r of rows.results) existed.add(r.link)
+    }
+
+    // 排序位：每目标组一条聚合查询，导入时按序自增
+    const sortBase = new Map<number, number>()
+    const targetGroupIds = [...new Set(items.map((it) => groupIdByName.get(it.group ?? '未分组')!))]
+    for (let i = 0; i < targetGroupIds.length; i += 100) {
+      const chunk = targetGroupIds.slice(i, i + 100)
+      const rows = await c.env.DB.prepare(
+        `SELECT group_id, COALESCE(MAX(sort), -1) + 1 AS next FROM friends WHERE group_id IN (${chunk.map(() => '?').join(',')}) GROUP BY group_id`,
+      )
+        .bind(...chunk)
+        .all<{ group_id: number; next: number }>()
+      for (const r of rows.results) sortBase.set(r.group_id, r.next)
+    }
+    const sortCursor = new Map<number, number>()
+    const nextSortFor = (gid: number) => {
+      const cur = sortCursor.get(gid) ?? sortBase.get(gid) ?? 0
+      sortCursor.set(gid, cur + 1)
+      return cur
+    }
+
+    // 插入：batch 分片执行（upsert 语义与原实现一致，缺省字段保留旧值）
     let imported = 0
     let updated = 0
-    for (const it of items) {
-      const groupId = await ensureGroup(it.group ?? '未分组')
-      const existed = await c.env.DB.prepare('SELECT 1 AS x FROM friends WHERE link = ?').bind(it.link).first()
-      await c.env.DB.prepare(
+    const stmts = items.map((it) => {
+      const groupId = groupIdByName.get(it.group ?? '未分组')!
+      const isUpdate = existed.has(it.link)
+      if (isUpdate) updated++
+      else imported++
+      return c.env.DB.prepare(
         `INSERT INTO friends (group_id, author, title, "desc", link, feed, icon, avatar, archs, since, comment, in_circle, sort)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort), -1) + 1 FROM friends WHERE group_id = ?))
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(link) DO UPDATE SET
            author = COALESCE(excluded.author, author),
            title = COALESCE(excluded.title, title),
@@ -178,14 +215,14 @@ export function importRoutes() {
            in_circle = excluded.in_circle,
            group_id = excluded.group_id,
            updated_at = datetime('now')`,
+      ).bind(
+        groupId, it.author, it.title, it.desc, it.link, it.feed, it.icon, it.avatar,
+        it.archs ? JSON.stringify(it.archs) : null, it.since, it.comment, it.inCircle ? 1 : 0,
+        nextSortFor(groupId),
       )
-        .bind(
-          groupId, it.author, it.title, it.desc, it.link, it.feed, it.icon, it.avatar,
-          it.archs ? JSON.stringify(it.archs) : null, it.since, it.comment, it.inCircle ? 1 : 0, groupId,
-        )
-        .run()
-      if (existed) updated++
-      else imported++
+    })
+    for (let i = 0; i < stmts.length; i += 50) {
+      await c.env.DB.batch(stmts.slice(i, i + 50))
     }
 
     return c.json({
