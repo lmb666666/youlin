@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useState, useId } from 'react'
 import {
-  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { sortableKeyboardCoordinates, SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import { ChevronDown, ChevronRight, GripVertical, Pencil, Plus, EyeOff, Eye, Trash2, TriangleAlert, FolderPen, ArrowUp, ArrowDown, Sparkles, Search } from 'lucide-react'
@@ -27,6 +27,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { api, type Friend, type Group } from '@/lib/api'
+import { useSettings } from '@/lib/settings'
 
 // ── 编辑弹窗 ──────────────────────────────────────────────────────────────
 
@@ -56,6 +57,8 @@ function FriendDialog(props: {
   onSaved: () => void
 }) {
   const { groups, editing, presetGroupId, open, onOpenChange, onSaved } = props
+  const groupFieldId = useId()
+  const statusFieldId = useId()
   const [values, setValues] = useState<FriendFormValues | null>(null)
   const [busy, setBusy] = useState(false)
   const [probing, setProbing] = useState(false)
@@ -168,9 +171,9 @@ function FriendDialog(props: {
         {values && (
           <div className="grid gap-3">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="分组">
+              <Field label="分组" htmlFor={groupFieldId}>
                 <Select value={String(values.groupId)} onValueChange={(v) => set('groupId', Number(v))}>
-                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id={groupFieldId} className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {groups.map((g) => (
                       <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
@@ -178,9 +181,9 @@ function FriendDialog(props: {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="状态">
+              <Field label="状态" htmlFor={statusFieldId}>
                 <Select value={values.status} onValueChange={(v) => set('status', v as FriendFormValues['status'])}>
-                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id={statusFieldId} className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="active">显示</SelectItem>
                     <SelectItem value="hidden">隐藏</SelectItem>
@@ -252,11 +255,13 @@ function FriendDialog(props: {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
+  const autoId = useId()
+  const id = htmlFor ?? autoId
   return (
     <div className="grid gap-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
-      {children}
+      <Label htmlFor={id} className="text-xs text-muted-foreground">{label}</Label>
+      {htmlFor || !isValidElement(children) ? children : cloneElement(children as React.ReactElement<{ id?: string }>, { id })}
     </div>
   )
 }
@@ -384,14 +389,15 @@ function SortableFriendRow(props: {
 }
 
 function Avatar({ friend }: { friend: Friend }) {
+  const [failed, setFailed] = useState(false)
   const src = friend.avatar || friend.icon
-  if (src) {
+  if (src && !failed) {
     return (
       <img
         src={src}
         alt=""
         className="size-9 shrink-0 rounded-full border object-cover"
-        onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
+        onError={() => setFailed(true)}
       />
     )
   }
@@ -405,8 +411,11 @@ function Avatar({ friend }: { friend: Friend }) {
 // ── 页面 ──────────────────────────────────────────────────────────────────
 
 export default function LinksPage() {
+  const settings = useSettings()
+  const pageSize = typeof settings['ui.pageSize'] === 'number' ? (settings['ui.pageSize'] as number) : 20
   const [groups, setGroups] = useState<Group[] | null>(null)
   const [friends, setFriends] = useState<Friend[]>([])
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [friendDialog, setFriendDialog] = useState<{ open: boolean; editing: Friend | null; presetGroupId: number | null }>({
     open: false, editing: null, presetGroupId: null,
   })
@@ -416,7 +425,10 @@ export default function LinksPage() {
   const [query, setQuery] = useState('')
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   const reload = useCallback(async () => {
     try {
@@ -581,7 +593,9 @@ export default function LinksPage() {
       )}
 
       {groups.map((g, gi) => {
-        const rows = friendsOf.get(g.id) ?? []
+        const allRows = friendsOf.get(g.id) ?? []
+        const rows = !expanded.has(g.id) && allRows.length > pageSize ? allRows.slice(0, pageSize) : allRows
+        const clipped = allRows.length > pageSize && !expanded.has(g.id)
         const isCollapsed = !searching && collapsed.has(g.id)
         return (
           <Card key={g.id}>
@@ -595,10 +609,11 @@ export default function LinksPage() {
                   {isCollapsed ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
                 </button>
                 <CardTitle className="text-base">{g.name}</CardTitle>
-                <Badge variant="secondary">{rows.length}</Badge>
+                <Badge variant="secondary">{allRows.length}</Badge>
                 {g.desc && <span className="hidden text-sm text-muted-foreground md:inline">{g.desc}</span>}
               </div>
               <div className="flex items-center gap-0.5">
+                <Badge variant="secondary" className="hidden md:inline-flex">{rows.length}</Badge>
                 <Button variant="ghost" size="icon" className="size-8" disabled={gi === 0} onClick={() => void moveGroup(gi, -1)} aria-label="上移分组">
                   <ArrowUp className="size-3.5" />
                 </Button>
@@ -629,6 +644,7 @@ export default function LinksPage() {
                   {searching ? '没有匹配的友链' : '分组为空'}
                 </p>
               ) : (
+                <>
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => void handleDragEnd(g.id, e)}>
                   <SortableContext items={rows.map((r) => r.id)} strategy={verticalListSortingStrategy}>
                     <div className="grid gap-1.5">
@@ -644,6 +660,12 @@ export default function LinksPage() {
                     </div>
                   </SortableContext>
                 </DndContext>
+                {clipped && (
+                  <Button variant="ghost" size="sm" className="mt-2 w-full" onClick={() => setExpanded((prev) => new Set(prev).add(g.id))}>
+                    显示全部 {allRows.length} 条
+                  </Button>
+                )}
+                </>
               )}
             </CardContent>
           </Card>

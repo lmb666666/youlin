@@ -5,6 +5,7 @@ import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
   type SortingState,
@@ -15,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { api, type HealthFriend } from '@/lib/api'
+import { useSettings } from '@/lib/settings'
 
 function fmt(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -128,6 +130,7 @@ export default function HealthPage() {
   const [friends, setFriends] = useState<HealthFriend[] | null>(null)
   const [running, setRunning] = useState(false)
   const [sorting, setSorting] = useState<SortingState>([])
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 })
   const pollRef = useRef<number | null>(null)
 
   const reload = useCallback(async () => {
@@ -206,13 +209,17 @@ export default function HealthPage() {
     URL.revokeObjectURL(url)
   }
 
+  const settings = useSettings()
+  const pageSize = typeof settings['ui.pageSize'] === 'number' ? (settings['ui.pageSize'] as number) : 20
   const table = useReactTable({
     data: friends ?? [],
     columns,
-    state: { sorting },
+    state: { sorting, pagination: { ...pagination, pageSize } },
     onSortingChange: setSorting,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   })
 
   if (!friends) {
@@ -254,6 +261,7 @@ export default function HealthPage() {
           {friends.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">还没有友链。</p>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((hg) => (
@@ -277,6 +285,16 @@ export default function HealthPage() {
                 ))}
               </TableBody>
             </Table>
+            {table.getPageCount() > 1 && (
+              <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
+                <span>共 {friends.length} 条 · 第 {table.getState().pagination.pageIndex + 1} / {table.getPageCount()} 页</span>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>上一页</Button>
+                  <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>下一页</Button>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>

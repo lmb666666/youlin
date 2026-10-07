@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useId } from 'react'
 import { toast } from 'sonner'
 import { Download, RotateCcw, Save, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -14,10 +14,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { api, type SettingsSchemaField, type SettingsSchemaGroup } from '@/lib/api'
+import { useSettingsRefresh } from '@/lib/settings'
 
 type Values = Record<string, unknown>
 
 export default function SettingsPage() {
+  const refreshSettings = useSettingsRefresh()
   const [schema, setSchema] = useState<SettingsSchemaGroup[] | null>(null)
   const [values, setValues] = useState<Values | null>(null)
   const [dirty, setDirty] = useState<Values>({})
@@ -56,6 +58,7 @@ export default function SettingsPage() {
       })
       setValues(res.values)
       setDirty({})
+      refreshSettings()
       toast.success(`已保存 ${sendable.length} 项设置`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '保存失败')
@@ -73,6 +76,7 @@ export default function SettingsPage() {
         await api('/api/admin/settings/import', { method: 'POST', body: JSON.stringify(body) })
         toast.success('配置已导入（整表替换）')
         void reload()
+        refreshSettings()
       } catch (err) {
         toast.error(err instanceof Error ? err.message : '导入失败')
       }
@@ -150,11 +154,12 @@ export default function SettingsPage() {
 }
 
 /** JSON 字段编辑器：本地草稿态，避免输入过程中非法 JSON 触发回跳 */
-function JsonEditor({ value, className, onChange }: { value: unknown; className?: string; onChange: (v: unknown) => void }) {
+function JsonEditor({ id, value, className, onChange }: { id: string; value: unknown; className?: string; onChange: (v: unknown) => void }) {
   const [raw, setRaw] = useState<string | null>(null)
   const invalid = raw !== null && !jsonParses(raw)
   return (
     <Textarea
+      id={id}
       className={`font-mono text-xs ${className ?? ''} ${invalid ? 'border-destructive' : ''}`}
       rows={3}
       spellCheck={false}
@@ -189,20 +194,22 @@ function FieldControl(props: {
 }) {
   const { field: f, value, dirty, onChange } = props
   const className = dirty ? 'border-amber-500/60' : undefined
+  const id = useId()
 
   return (
     <div className={`grid gap-1.5 ${f.full ? 'md:col-span-2' : ''}`}>
-      <Label className="text-xs" title={f.key}>
+      <Label htmlFor={id} className="text-xs" title={f.key}>
         {f.label} <span className="text-muted-foreground/60">{f.key}</span>
       </Label>
       {f.type === 'boolean' && (
         <div className="flex items-center gap-2 py-1">
-          <Switch checked={value === true} onCheckedChange={onChange} />
+          <Switch id={id} checked={value === true} onCheckedChange={onChange} />
           <span className="text-sm text-muted-foreground">{value === true ? '开启' : '关闭'}</span>
         </div>
       )}
       {f.type === 'number' && (
         <Input
+          id={id}
           type="number"
           className={className}
           value={typeof value === 'number' ? value : ''}
@@ -213,7 +220,7 @@ function FieldControl(props: {
       )}
       {f.type === 'enum' && (
         <Select value={String(value ?? '')} onValueChange={onChange}>
-          <SelectTrigger className={`w-full ${className ?? ''}`}><SelectValue /></SelectTrigger>
+          <SelectTrigger id={id} className={`w-full ${className ?? ''}`}><SelectValue /></SelectTrigger>
           <SelectContent>
             {(f.options ?? []).map((o) => (
               <SelectItem key={o} value={o}>{o}</SelectItem>
@@ -223,17 +230,18 @@ function FieldControl(props: {
       )}
       {f.type === 'stringList' && (
         <Input
+          id={id}
           className={className}
           value={Array.isArray(value) ? (value as string[]).join(', ') : ''}
           placeholder="逗号分隔"
           onChange={(e) => onChange(e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean))}
         />
       )}
-      {f.type === 'json' && <JsonEditor value={value} className={className} onChange={onChange} />}
+      {f.type === 'json' && <JsonEditor id={id} value={value} className={className} onChange={onChange} />}
       {(f.type === 'string' || f.type === 'text') && (
         f.type === 'text'
-          ? <Textarea className={className} rows={2} value={String(value ?? '')} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />
-          : <Input className={className} value={String(value ?? '')} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />
+          ? <Textarea id={id} className={className} rows={2} value={String(value ?? '')} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />
+          : <Input id={id} className={className} value={String(value ?? '')} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />
       )}
       <p className="text-xs text-muted-foreground">{f.description}</p>
     </div>

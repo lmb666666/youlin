@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 export type Theme = 'light' | 'dark' | 'system'
 
-const ThemeContext = createContext<{ theme: Theme; setTheme: (t: Theme) => void }>({
+const ThemeContext = createContext<{ theme: Theme; setTheme: (t: Theme, persist?: boolean) => void }>({
   theme: 'system',
   setTheme: () => {},
 })
@@ -26,8 +26,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => mq.removeEventListener('change', onChange)
   }, [theme])
 
-  const setTheme = (t: Theme) => {
-    localStorage.setItem('youlin-theme', t)
+  // persist=false 用于套用服务端设置：只改当前渲染，不写成浏览器偏好
+  const setTheme = (t: Theme, persist = true) => {
+    if (persist) localStorage.setItem('youlin-theme', t)
     setThemeState(t)
   }
 

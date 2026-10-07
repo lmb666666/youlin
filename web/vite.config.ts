@@ -14,5 +14,16 @@ export default defineConfig({
       '/api': { target: 'http://127.0.0.1:8787', changeOrigin: false },
     },
   },
-  build: { outDir: 'dist' },
+  build: {
+    outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router'],
+          tanstack: ['@tanstack/react-table'],
+          dnd: ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+        },
+      },
+    },
+  },
 })
