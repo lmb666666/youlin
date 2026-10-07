@@ -56,7 +56,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: 'crawl.enabled', type: 'boolean', default: true, label: '抓取总开关', description: '关闭后停止抓取，已有数据照常输出。' },
       { key: 'crawl.batchSize', type: 'number', default: 3, min: 1, max: 50, label: '每轮站点数', description: '与 Cron 频率共同决定刷新周期。' },
       { key: 'crawl.maxPerFriend', type: 'number', default: 5, min: 1, max: 50, label: '每站篇数上限', description: '每个源只保留最新 N 篇。' },
-      { key: 'crawl.outputMaxArticles', type: 'number', default: 150, min: 1, max: 1000, label: '输出总量上限', description: '接口二按发布时间保留最新 N 篇。' },
+      { key: 'crawl.outputMaxArticles', type: 'number', default: 150, min: 1, max: 1000, label: '输出总量上限', description: '朋友圈按发布时间保留最新 N 篇。' },
       { key: 'crawl.futureToleranceDays', type: 'number', default: 2, min: 0, max: 30, label: '未来时间容差（天）', description: '文章发布时间晚于当前时间超过该天数将被丢弃。' },
       { key: 'crawl.retentionDays', type: 'number', default: 90, min: 7, max: 3650, label: '库内保留天数', description: '超期文章每日自动清理。' },
       { key: 'crawl.timeoutSeconds', type: 'number', default: 15, min: 1, max: 60, label: '单源超时（秒）', description: '抓取单个源的超时时间。' },
@@ -104,7 +104,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
   {
     key: 'apply',
     label: '友链申请',
-    description: '公开申请页（接口三）的行为。',
+    description: '公开申请页的行为。',
     fields: [
       { key: 'apply.enabled', type: 'boolean', default: true, label: '申请通道', description: '关闭后 /apply 显示停用提示，POST /apply 返回 403。' },
       { key: 'apply.rateLimitPerDay', type: 'number', default: 3, min: 1, max: 100, label: '每 IP 每天上限', description: '按天限流，超出返回 429。' },
@@ -120,11 +120,11 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
   {
     key: 'api',
     label: '接口',
-    description: '对外接口（一/二）的缓存与输出行为。',
+    description: '对外接口的缓存与输出行为。',
     fields: [
-      { key: 'api.cacheSeconds', type: 'number', default: 300, min: 0, max: 86400, label: '边缘缓存（秒）', description: '接口一/二的 Cache-Control。' },
+      { key: 'api.cacheSeconds', type: 'number', default: 300, min: 0, max: 86400, label: '边缘缓存（秒）', description: '友链数据与朋友圈数据的 Cache-Control。' },
       { key: 'api.corsOrigin', type: 'string', default: '*', label: 'CORS 来源', description: '允许的 Origin，* 或具体来源。' },
-      { key: 'api.includeHidden', type: 'boolean', default: false, label: '输出隐藏记录', description: '开启后 hidden 友链也会出现在接口一。' },
+      { key: 'api.includeHidden', type: 'boolean', default: false, label: '输出隐藏记录', description: '开启后隐藏的友链也会出现在友链数据接口。' },
       { key: 'api.maxLimit', type: 'number', default: 500, min: 1, max: 5000, label: 'limit 上限', description: '?limit= 允许的最大值。' },
     ],
   },

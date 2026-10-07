@@ -5,13 +5,13 @@
 ## 通用约定
 
 - **CORS 全开**：`Access-Control-Allow-Origin: *`（可在设置中收紧，见配置参考 `api.corsOrigin`）
-- **边缘缓存**：接口一/二默认 `Cache-Control: public, max-age=300`（`api.cacheSeconds` 可调）
+- **边缘缓存**：友链数据与朋友圈接口默认 `Cache-Control: public, max-age=300`（`api.cacheSeconds` 可调）
 - **时间**：一律 ISO 8601 UTC（如 `2026-10-05T13:55:00Z`）
 - **字段**：camelCase；**可选字段无值即不输出**（按可选处理）
 - **演进策略**：契约冻结，只做增量演进（新增可选字段）；破坏性变更会开新路径
 - **错误响应**统一为：`{ "error": { "code": "...", "message": "...", "details": { ... } } }`
 
-## 接口一：友链数据 `GET /api/links`
+## 友链数据 `GET /api/links`
 
 渲染友链页的数据源。分组结构输出；`status=hidden` 的记录不输出；站点自身信息不在本接口。
 
@@ -80,7 +80,7 @@
 
 完整示例（会被 CI 校验）见 [`schemas/examples/api-links.example.json`](../schemas/examples/api-links.example.json)。
 
-## 接口二：朋友圈 `GET /api/circle`
+## 朋友圈 `GET /api/circle`
 
 朋友们最新文章的聚合。按 `publishedAt` 倒序；`stats` 基于「参与朋友圈」的友链全集（开启朋友圈且配了 feed），不受截断影响。
 
@@ -122,7 +122,7 @@
 }
 ```
 
-## 接口三：友链申请 `/apply`
+## 友链申请 `/apply`
 
 | 方法 | 说明 |
 | --- | --- |

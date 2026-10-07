@@ -13,7 +13,7 @@ export const httpUrl = z
         return false
       }
     },
-    { message: '必须是 http(s) 地址' },
+    { message: '链接需以 http:// 或 https:// 开头' },
   )
 
 export const dateYMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式须为 YYYY-MM-DD')

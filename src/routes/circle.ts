@@ -4,7 +4,7 @@ import { corsHeaders } from './links'
 import type { AppEnv } from '../types'
 
 /**
- * 接口二：朋友圈（DESIGN §4.2）
+ * 朋友圈接口（DESIGN §4.2）
  *   GET /api/circle            stats + articles（默认截到 crawl.outputMaxArticles）
  *   GET /api/circle?limit=N    再截断（上限 api.maxLimit）
  * 统计口径见 internal/DECISIONS.md D17：基于"参与朋友圈"的全集，而非截断后的输出。

@@ -53,7 +53,7 @@
 | `crawl.enabled` | `true` | 抓取总开关。关闭后停止抓取，已有数据照常输出。 |
 | `crawl.batchSize` | `3` | 每轮站点数。与 Cron 频率共同决定刷新周期。 |
 | `crawl.maxPerFriend` | `5` | 每站篇数上限。每个源只保留最新 N 篇。 |
-| `crawl.outputMaxArticles` | `150` | 输出总量上限。接口二按发布时间保留最新 N 篇。 |
+| `crawl.outputMaxArticles` | `150` | 输出总量上限。朋友圈按发布时间保留最新 N 篇。 |
 | `crawl.futureToleranceDays` | `2` | 未来时间容差（天）。文章发布时间晚于当前时间超过该天数将被丢弃。 |
 | `crawl.retentionDays` | `90` | 库内保留天数。超期文章每日自动清理。 |
 | `crawl.timeoutSeconds` | `15` | 单源超时（秒）。抓取单个源的超时时间。 |
@@ -93,7 +93,7 @@
 
 ### 友链申请（`apply.*`）
 
-公开申请页（接口三）的行为。
+公开申请页的行为。
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -109,13 +109,13 @@
 
 ### 接口（`api.*`）
 
-对外接口（一/二）的缓存与输出行为。
+对外接口的缓存与输出行为。
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `api.cacheSeconds` | `300` | 边缘缓存（秒）。接口一/二的 Cache-Control。 |
+| `api.cacheSeconds` | `300` | 边缘缓存（秒）。友链数据与朋友圈数据的 Cache-Control。 |
 | `api.corsOrigin` | `*` | CORS 来源。允许的 Origin，* 或具体来源。 |
-| `api.includeHidden` | `false` | 输出隐藏记录。开启后 hidden 友链也会出现在接口一。 |
+| `api.includeHidden` | `false` | 输出隐藏记录。开启后隐藏的友链也会出现在友链数据接口。 |
 | `api.maxLimit` | `500` | limit 上限。?limit= 允许的最大值。 |
 
 ### 重建集成（`rebuild.*`）

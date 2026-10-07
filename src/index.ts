@@ -11,7 +11,7 @@ import { runCronTick } from './crawler/crawl'
 const app = new Hono<AppEnv>()
 
 // 每请求装配配置（默认值 ← settings 表 ← 环境变量覆盖，见 DESIGN §9）
-// 注意 /apply（接口三）同样需要配置（文案、开关、Turnstile）
+// 注意 /apply（申请接口）同样需要配置（文案、开关、Turnstile）
 const withConfig: MiddlewareHandler<AppEnv> = async (c, next) => {
   const { cfg } = await loadConfig(c.env.DB, c.env)
   c.set('cfg', cfg)

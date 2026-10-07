@@ -3,7 +3,7 @@ import type { AppConfig, AppEnv } from '../types'
 import { isoUtc, daysSince } from '../util/time'
 
 /**
- * 接口一：友链数据（DESIGN §4.1）
+ * 友链数据接口（DESIGN §4.1）
  *   GET /api/links           全部分组
  *   GET /api/links?group=X   按分组名过滤（精确匹配）
  */

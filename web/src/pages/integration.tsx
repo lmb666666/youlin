@@ -159,7 +159,7 @@ const data = await res.json()
           <Endpoint
             method="GET"
             path="/api/links"
-            desc="友链分组数据，每条含体检摘要 health。推荐在博客页面运行时获取。"
+            desc="友链分组数据，含各站点的健康状态。"
             params={[
               { name: '?group=分组名', desc: '按分组名精确过滤（URL 编码）' },
             ]}
@@ -169,7 +169,7 @@ const data = await res.json()
           <Endpoint
             method="GET"
             path="/api/circle"
-            desc="朋友圈文章聚合与统计。"
+            desc="朋友们最新文章的聚合与统计。"
             params={[
               { name: '?limit=N', desc: '截断文章条数（默认与上限见设置）' },
             ]}
@@ -179,7 +179,7 @@ const data = await res.json()
           <Endpoint
             method="POST"
             path="/apply"
-            desc="提交友链申请；申请页可直接外链给访客。"
+            desc="提交友链申请，或把申请页直接外链给访客。"
             params={[
               { name: 'siteName / link', desc: '必填（站点名与站点链接）' },
               { name: 'author / avatar / feed / desc / contact / note', desc: '选填' },

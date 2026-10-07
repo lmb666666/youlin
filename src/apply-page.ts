@@ -1,7 +1,7 @@
 import type { AppConfig } from './types'
 
 /**
- * 申请页（接口三 GET /apply，DESIGN §4.3）：
+ * 申请页（GET /apply，DESIGN §4.3）：
  * 服务端渲染的自包含 HTML（无外部资源，除可选的 Turnstile 脚本），
  * 文案由 site.* / apply.* 配置驱动；提交走 fetch POST /apply（JSON）。
  */
@@ -140,10 +140,22 @@ ${siteUrl ? `<p class="foot">← 返回 <a href="${esc(siteUrl)}">${siteName}</a
   if (!form) return;
   var btn = document.getElementById('submit-btn');
   var result = document.getElementById('result');
-  function show(kind, text){ result.className = 'result ' + kind; result.textContent = text; result.hidden = false; }
+  function show(kind, text){ result.className = 'result ' + kind; result.textContent = text; result.hidden = false; result.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
   var FIELD_LABELS = ${jsonForScript(Object.fromEntries(FIELDS.map((f) => [f.name, f.label])))};
   form.addEventListener('submit', async function(e){
     e.preventDefault();
+    // 客户端必填预检：空表单不发请求
+    var firstEmpty = null;
+    form.querySelectorAll('[required]').forEach(function(el){
+      var empty = (el.value || '').trim() === '';
+      el.closest('label').querySelector('.err').textContent = empty ? '必填' : '';
+      if (empty && !firstEmpty) firstEmpty = el;
+    });
+    if (firstEmpty) {
+      show('bad', '请填写带 * 的必填项');
+      firstEmpty.focus();
+      return;
+    }
     var data = {};
     new FormData(form).forEach(function(v, k){ if (typeof v === 'string' && v.trim() !== '') data[k] = v.trim(); });
     var ts = document.querySelector('[name="cf-turnstile-response"]');

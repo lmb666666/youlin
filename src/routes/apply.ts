@@ -9,7 +9,7 @@ import { dateOnly } from '../util/time'
 import { httpUrl } from '../util/validate'
 
 /**
- * 接口三：友链申请（DESIGN §4.3）
+ * 友链申请接口（DESIGN §4.3）
  *   GET  /apply   内置申请页（HTML，文案由 site.* / apply.* 驱动）
  *   POST /apply   JSON 提交：400 字段校验 / 403 人机验证或反链拒绝 / 409 重复 / 429 限流
  * 成功 201：{ id, status, backlink: { ok, detail } }
@@ -21,7 +21,8 @@ const optionalText = (max: number) => z.union([z.string().max(max), z.literal(''
 const applySchema = z
   .object({
     siteName: optionalText(100),
-    link: httpUrl,
+    // link 容忍缺省/空串：必填与格式提示都走下方中文校验，避免英文 zod 报错泄漏到页面
+    link: z.preprocess((v) => (v === '' ? undefined : v), httpUrl.optional()),
     author: optionalText(100),
     avatar: optionalUrl,
     feed: optionalUrl,
@@ -33,6 +34,12 @@ const applySchema = z
   .strict()
 
 const KNOWN_FIELDS = ['siteName', 'link', 'author', 'avatar', 'feed', 'desc', 'contact', 'note']
+
+/** 字段中文名（校验提示用） */
+const FIELD_LABELS: Record<string, string> = {
+  siteName: '站点名', link: '站点链接', author: '站长昵称', avatar: '头像链接',
+  feed: 'RSS 订阅地址', desc: '站点简介', contact: '联系方式', note: '备注',
+}
 
 function nonEmpty(v: unknown): boolean {
   return typeof v === 'string' && v.trim() !== ''
@@ -128,16 +135,18 @@ export function applyRoutes() {
     if (body === undefined) return jsonError(400, 'invalid_json', '请求体须为 JSON')
 
     const parsed = applySchema.safeParse(body)
-    if (!parsed.success) return jsonError(400, 'validation_failed', '字段校验失败', fieldDetails(parsed.error.issues))
+    if (!parsed.success) return jsonError(400, 'validation_failed', '请检查表单填写', fieldDetails(parsed.error.issues))
     const input = parsed.data
 
     // 必填字段（apply.requiredFields，服务端权威）
     const missing: Record<string, string> = {}
     for (const f of cfg.apply.requiredFields) {
       if (!KNOWN_FIELDS.includes(f)) continue
-      if (!nonEmpty((input as Record<string, unknown>)[f])) missing[f] = '此项为必填'
+      if (!nonEmpty((input as Record<string, unknown>)[f])) missing[f] = `请填写${FIELD_LABELS[f] ?? '该字段'}`
     }
-    if (Object.keys(missing).length > 0) return jsonError(400, 'validation_failed', '字段校验失败', missing)
+    // 链接是申请与入库的前提，不受必填字段配置影响
+    if (!nonEmpty(input.link)) missing['link'] = '请填写站点链接'
+    if (Object.keys(missing).length > 0) return jsonError(400, 'validation_failed', '请检查表单填写', missing)
 
     const ip = clientIp(c)
     const day = new Date().toISOString().slice(0, 10)
@@ -150,8 +159,10 @@ export function applyRoutes() {
       return jsonError(429, 'rate_limited', `每 IP 每天最多提交 ${cfg.apply.rateLimitPerDay} 次，请明天再试`)
     }
 
+    const link = input.link!.trim()
+
     // 去重：已在友链表 / 已有待审申请
-    const variants = linkVariants(input.link)
+    const variants = linkVariants(link)
     const inFriends = await c.env.DB.prepare(
       `SELECT 1 AS x FROM friends WHERE link IN (${variants.map(() => '?').join(',')}) LIMIT 1`,
     )
@@ -170,7 +181,7 @@ export function applyRoutes() {
       const token = nonEmpty(input.turnstileToken) ? input.turnstileToken!.trim() : ''
       if (!token) return jsonError(400, 'validation_failed', '字段校验失败', { turnstileToken: '请完成人机验证' })
       if (!c.env.TURNSTILE_SECRET) {
-        return jsonError(403, 'turnstile_unconfigured', '服务端未配置 TURNSTILE_SECRET，暂时无法提交')
+        return jsonError(403, 'turnstile_unconfigured', '服务端未配置人机验证密钥，暂无法提交')
       }
       if (!(await verifyTurnstile(c.env, c.env.TURNSTILE_SECRET, token, ip))) {
         return jsonError(403, 'turnstile_failed', '人机验证未通过，请重试')
@@ -180,7 +191,7 @@ export function applyRoutes() {
     // 反链检测（apply.backlinkPolicy / backlink.enabled）
     let backlink: BacklinkVerdict = { ok: null, detail: null }
     if (cfg.apply.backlinkPolicy !== 'off' && cfg.backlink.enabled) {
-      backlink = await checkApplicantBacklink(c.env, cfg, input.link)
+      backlink = await checkApplicantBacklink(c.env, cfg, link)
     }
     if (cfg.apply.backlinkPolicy === 'reject' && backlink.ok !== true) {
       return jsonError(403, 'backlink_missing', '未检测到指向本站的链接，请先添加友链', {
@@ -189,7 +200,7 @@ export function applyRoutes() {
     }
 
     // 落库（autoApprove 直接入库并建友链）
-    const siteName = nonEmpty(input.siteName) ? input.siteName!.trim() : new URL(input.link).hostname
+    const siteName = nonEmpty(input.siteName) ? input.siteName!.trim() : new URL(link).hostname
     let status: 'pending' | 'approved' = 'pending'
     let friendId: number | null = null
     if (cfg.apply.autoApprove) {
@@ -223,7 +234,7 @@ export function applyRoutes() {
       .bind(
         siteName,
         nonEmpty(input.author) ? input.author!.trim() : null,
-        input.link,
+        link,
         nonEmpty(input.avatar) ? input.avatar!.trim() : null,
         nonEmpty(input.feed) ? input.feed!.trim() : null,
         nonEmpty(input.desc) ? input.desc!.trim() : null,
