@@ -12,8 +12,8 @@
 项目 MIT 开源，单实例部署，个人站点在 Cloudflare 免费额度内运行。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-links-dark.png">
-  <img src="docs/images/admin-links.png" alt="友链管理">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-dashboard-dark.png">
+  <img src="docs/images/admin-dashboard.png" alt="总览台">
 </picture>
 
 ## 特色 | Features
@@ -46,6 +46,11 @@
 - 提交时自动检测对方站点是否放有你的链接，结果作为审核证据；可配置为未检测到反链时拒绝
 - 待审申请集中在队列里，通过后自动入库，立即出现在接口数据中
 
+### 总览与接入
+
+- 总览台一屏看清：友链与隐藏数、朋友圈源、失联站点、待审申请，附最近文章
+- 「接入」页给出三个接口在当前实例上的真实地址、参数与可复制的示例代码
+
 ### 设置
 
 - 所有配置项都有默认值，不做修改也能运行；设置页根据配置定义自动生成表单
@@ -73,6 +78,13 @@ const { groups } = await (await fetch('https://你的实例.workers.dev/api/link
 <details>
 <summary>点击展开截图</summary>
 
+### 友链
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-links-dark.png">
+  <img src="docs/images/admin-links.png" alt="友链">
+</picture>
+
 ### 朋友圈
 
 <picture>
@@ -80,18 +92,25 @@ const { groups } = await (await fetch('https://你的实例.workers.dev/api/link
   <img src="docs/images/admin-circle.png" alt="朋友圈">
 </picture>
 
-### 申请页（访客侧）
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/apply-dark.png">
-  <img src="docs/images/apply.png" alt="申请页">
-</picture>
-
 ### 体检
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-health-dark.png">
   <img src="docs/images/admin-health.png" alt="体检">
+</picture>
+
+### 接入
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-api-dark.png">
+  <img src="docs/images/admin-api.png" alt="接入">
+</picture>
+
+### 申请页（访客侧）
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/apply-dark.png">
+  <img src="docs/images/apply.png" alt="申请页">
 </picture>
 
 ### 设置
