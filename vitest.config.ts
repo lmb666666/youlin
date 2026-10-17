@@ -19,5 +19,7 @@ export default defineConfig(async () => ({
   ],
   test: {
     setupFiles: ['./tests/apply-migrations.ts'],
+    // Node 侧用例在独立的 vitest.node.config.ts 里跑（需要 better-sqlite3）
+    exclude: ['**/node_modules/**', '**/dist/**', 'tests/node/**'],
   },
 }))

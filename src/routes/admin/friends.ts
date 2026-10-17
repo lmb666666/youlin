@@ -4,13 +4,14 @@ import { jsonError, fieldDetails, readJson } from '../../util/http'
 import { httpUrl, dateYMD } from '../../util/validate'
 import { isoUtc } from '../../util/time'
 import { triggerRebuild } from '../../rebuild'
+import { runInBackground } from '../../util/bg'
 import type { AppEnv } from '../../types'
 
 /** rebuild.auto 时数据变化后触发接入方重建（不阻塞响应） */
 function maybeAutoRebuild(c: Context<AppEnv>, reason: string): void {
   const cfg = c.get('cfg')
   if (cfg.rebuild.enabled && cfg.rebuild.auto) {
-    c.executionCtx.waitUntil(triggerRebuild(c.env, cfg, reason))
+    runInBackground(c, triggerRebuild(c.env, cfg, reason))
   }
 }
 

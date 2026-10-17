@@ -28,7 +28,7 @@ function b64urlDecode(text: string): Uint8Array {
   return out
 }
 
-async function hmacKey(secret: string): Promise<CryptoKey> {
+async function hmacKey(secret: string) {
   return crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
 }
 

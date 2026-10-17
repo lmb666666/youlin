@@ -128,7 +128,7 @@ export class WebDavClient {
   async put(name: string, bytes: Uint8Array): Promise<void> {
     const res = await this.request('PUT', joinDavUrl(this.base, name), {
       headers: { 'Content-Type': 'application/gzip' },
-      body: bytes as unknown as BodyInit,
+      body: bytes as unknown as RequestInit['body'],
     })
     if (![200, 201, 204].includes(res.status)) {
       throw new WebDavError(`上传失败（${res.status}）`, res.status)

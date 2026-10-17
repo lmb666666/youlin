@@ -7,6 +7,7 @@ import { extractDeclaredFeeds, commonFeedPaths } from '../../crawler/discover'
 import { fetchRemote, runtimeGet } from '../../crawler/http'
 import { parseFeed } from '../../crawler/parse'
 import type { AppConfig, AppEnv } from '../../types'
+import { runInBackground } from '../../util/bg'
 
 /**
  * 抓取/体检/文章的管理 API（DESIGN §5）：
@@ -85,7 +86,7 @@ export function crawlerRoutes() {
     if (!cfg.linkCheck.enabled) return jsonError(400, 'health_disabled', '体检总开关已关闭（linkCheck.enabled）')
     const n = await countActive(c)
     if (n === 0) return c.json({ started: 0 })
-    c.executionCtx.waitUntil(runHealthRound(c.env.DB, c.env, cfg))
+    runInBackground(c, runHealthRound(c.env.DB, c.env, cfg))
     return c.json({ started: n })
   })
 
@@ -131,7 +132,7 @@ export function crawlerRoutes() {
     }
     const n = await countActive(c)
     if (n === 0) return c.json({ started: 0 })
-    c.executionCtx.waitUntil(runManualRound(c.env.DB, c.env, cfg))
+    runInBackground(c, runManualRound(c.env.DB, c.env, cfg))
     return c.json({ started: n })
   })
 

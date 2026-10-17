@@ -1,7 +1,35 @@
-import type { D1Database, Fetcher } from '@cloudflare/workers-types'
+/**
+ * 运行时中立的 D1 最小接口：Cloudflare 的 D1Database 与 Node 侧的 SQLite 适配层
+ * 都满足这组签名（本项目只用到 prepare/bind/first/all/run/batch 与 last_row_id）。
+ */
+export interface D1Meta {
+  last_row_id?: number
+  changes?: number
+  duration?: number
+}
+
+export interface D1Result<T = unknown> {
+  results?: T[]
+  success?: boolean
+  meta: D1Meta
+}
+
+export interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement
+  first<T = unknown>(): Promise<T | null>
+  all<T = unknown>(): Promise<D1Result<T> & { results: T[] }>
+  run<T = unknown>(): Promise<D1Result<T>>
+}
+
+export interface D1DatabaseLike {
+  prepare(query: string): D1PreparedStatement
+  batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>
+  /** 执行多条 SQL（迁移与测试清表用） */
+  exec(query: string): Promise<unknown>
+}
 
 export interface Env {
-  DB: D1Database
+  DB: D1DatabaseLike
   ADMIN_TOKEN: string
   TURNSTILE_SECRET?: string
   GITHUB_PAT?: string
@@ -9,7 +37,6 @@ export interface Env {
   WEBDAV_PASSWORD?: string
   /** 覆盖级配置：JSON 文本，扁平 camelCase 点号键（DESIGN §9） */
   YOULIN_CONFIG_OVERRIDES?: string
-  ASSETS: Fetcher
 }
 
 /** 应用级配置（嵌套视图，由扁平 settings 合并而来） */

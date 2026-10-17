@@ -19,6 +19,12 @@ worker-configuration.d.ts
 .env.*
 *.local
 
+# ── 本地数据库（Node/Docker 运行时）────────────────────
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
 # ── 日志与系统/编辑器文件 ───────────────────────────────
 *.log
 .DS_Store
