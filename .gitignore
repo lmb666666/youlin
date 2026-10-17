@@ -17,6 +17,7 @@ worker-configuration.d.ts
 .dev.vars
 .env
 .env.*
+!.env.example
 *.local
 
 # ── 本地数据库（Node/Docker 运行时）────────────────────

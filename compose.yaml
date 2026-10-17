@@ -1,0 +1,29 @@
+# 友邻 Youlin · Docker Compose
+#
+#   1. cp .env.example .env 并填写 ADMIN_TOKEN
+#   2. docker compose up -d
+#   3. 浏览器打开 http://<服务器>:8787/admin/login
+#
+# 建议在容器前面放 Caddy/Nginx 提供 HTTPS（见 docs/deployment.md），
+# 并把端口的对外暴露交给反代，例如：ports: ["127.0.0.1:8787:8787"]。
+
+services:
+  youlin:
+    image: ghcr.io/lmb666666/youlin:latest
+    # 想本地构建时改成：
+    # build: .
+    container_name: youlin
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    environment:
+      # 数据卷固定挂到 /data，SQLite（含 WAL）都在这里
+      TZ: Asia/Shanghai
+    volumes:
+      - youlin-data:/data
+    # 镜像内置 healthcheck（GET /healthz），无需重复声明
+
+volumes:
+  youlin-data:

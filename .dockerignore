@@ -1,0 +1,23 @@
+# 构建上下文裁剪：只保留构建需要的内容
+.git
+.github
+internal
+node_modules
+**/node_modules
+dist
+**/dist
+server/dist
+web/dist
+.wrangler
+.wrangler*
+data
+coverage
+*.log
+.env
+.env.*
+!.env.example
+.dev.vars
+.DS_Store
+.idea
+.vscode
+docs

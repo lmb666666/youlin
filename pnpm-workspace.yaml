@@ -6,5 +6,6 @@ minimumReleaseAgeExclude:
 
 # 允许执行构建脚本的依赖（pnpm 11 语法；其余默认拒绝）
 allowBuilds:
+  better-sqlite3: true
   esbuild: true
   workerd: true
