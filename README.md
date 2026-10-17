@@ -151,7 +151,7 @@ docker compose up -d      # 拉取 ghcr.io/lmb666666/youlin:latest
 ```
 
 打开 `http://<服务器>:8787/admin` 登录即可。镜像同时提供 amd64 / arm64；升级用 `docker compose pull && docker compose up -d`。
-反向代理、HTTPS、备份与数据迁移见[部署指南](docs/deployment.md#docker) 与[备份与恢复](docs/backup.md)。
+反向代理、HTTPS、备份与数据迁移见[部署指南](docs/deployment.md#docker自建服务器) 与[备份与恢复](docs/backup.md)。
 
 ### 本地开发
 

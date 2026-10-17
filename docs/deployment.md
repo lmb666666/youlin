@@ -79,7 +79,7 @@ docker compose up -d      # 默认拉取 ghcr.io/lmb666666/youlin:latest
 
 打开 `http://<服务器>:8787/admin` 登录。数据在命名卷 `youlin_youlin-data`（容器内 `/data/youlin.db`），首次启动自动建表，重启和升级都不丢数据。镜像同时提供 amd64 与 arm64，NAS、ARM 小主机也能跑。
 
-想自己构建镜像：把 `compose.yaml` 里的 `image:` 换成 `build: .`，然后 `docker compose up -d --build`。
+想自己构建镜像：把 `compose.yaml` 里的 `image:` 换成 `build: .`，然后 `docker compose up -d --build`。\n\n镜像名对应本仓库的 GHCR。如果你 fork 了项目，自己的 Docker workflow 会把镜像推到 `ghcr.io/<你的用户名>/youlin`，把 compose 里的 `image` 改成那个即可。
 
 ### 2. 环境变量
 
@@ -109,7 +109,7 @@ links.example.com {
 
 同时把 compose 的端口改成只绑本机：`ports: ["127.0.0.1:8787:8787"]`，只让反代访问。
 
-用 Nginx 的话，转发到 `127.0.0.1:8787` 并开启 gzip；注意 `proxy_set_header Host $host`，Cookie 的 `Secure` 属性按请求协议判断，反代终止 TLS 时不需要额外配置。
+用 Nginx 的话，转发到 `127.0.0.1:8787` 并开启 gzip；记得带上 `proxy_set_header Host $host` 和 `proxy_set_header X-Forwarded-Proto $scheme`——会话 Cookie 会根据它决定是否加 `Secure`。
 
 ### 4. 升级
 

@@ -75,6 +75,11 @@ if (CRON_ENABLED) {
   console.log('[cron] 已禁用（CRON_ENABLED=false）')
 }
 
+// 常驻服务：单个后台任务漏网不该让整个实例退出（错误仍完整记录）
+process.on('unhandledRejection', (reason) => {
+  console.error('[youlin] 未处理的 Promise 拒绝:', reason instanceof Error ? reason.stack : reason)
+})
+
 for (const sig of ['SIGTERM', 'SIGINT'] as const) {
   process.on(sig, () => {
     console.log(`[youlin] 收到 ${sig}，正在关闭`)

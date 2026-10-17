@@ -14,6 +14,7 @@ const AUTH = `Basic ${btoa('davuser:davpass')}`
 
 const store = new Map<string, { bytes: Uint8Array; at: Date }>()
 let dirExists = false
+let putFails = false
 const originalFetch = globalThis.fetch
 
 function mockDav(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -51,6 +52,7 @@ function mockDav(input: RequestInfo | URL, init?: RequestInit): Promise<Response
   if (path.startsWith('/dav/')) {
     const name = decodeURIComponent(path.slice('/dav/'.length))
     if (req.method === 'PUT') {
+      if (putFails) return Promise.resolve(new Response('boom', { status: 500 }))
       return req.arrayBuffer().then((buf) => {
         store.set(name, { bytes: new Uint8Array(buf), at: new Date() })
         return new Response(null, { status: 201 })
@@ -136,6 +138,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch
+  putFails = false
 })
 
 describe('WebDAV 备份', () => {
@@ -252,5 +255,46 @@ describe('WebDAV 备份', () => {
     const { cfg } = await loadConfig(env.DB, env)
     const skipped = await maybeRunScheduledBackup(env.DB, env, cfg)
     expect(skipped).toBeNull()
+  })
+  it('上传失败记状态且周期内不再重试', async () => {
+    await seedFriend()
+    await configureDav({ 'backup.enabled': true, 'backup.schedule': 'daily' })
+    putFails = true
+
+    const res = await authed('/api/admin/backup/webdav/run', { method: 'POST' })
+    expect(res.status).toBe(502)
+    const body = (await res.json()) as { error: { code: string; message: string } }
+    expect(body.error.code).toBe('webdav_backup_failed')
+    expect(body.error.message).toContain('500')
+
+    const status = await json<{ last: { ok: boolean; error?: string } }>('/api/admin/backup/status')
+    expect(status.last.ok).toBe(false)
+    expect(status.last.error).toContain('500')
+
+    // 失败也写了尝试时间：周期内不再重试，避免每 5 分钟打一次失败的 WebDAV
+    const { loadConfig } = await import('../src/config/loader')
+    const { maybeRunScheduledBackup } = await import('../src/backup/run')
+    const { cfg } = await loadConfig(env.DB, env)
+    expect(await maybeRunScheduledBackup(env.DB, env, cfg)).toBeNull()
+  })
+
+  it('非 ASCII 凭据按 UTF-8 编码（btoa 直接处理会抛错）', async () => {
+    const { WebDavClient } = await import('../src/backup/webdav')
+    let seen = ''
+    const client = new WebDavClient({
+      url: 'https://dav.test/dav',
+      username: '用户',
+      password: '密码',
+      fetchImpl: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+        seen = new Headers(init?.headers).get('authorization') ?? ''
+        return new Response(null, { status: 201 })
+      }) as typeof fetch,
+    })
+    await client.put('youlin-backup-20260101-000000.json.gz', new Uint8Array([1]))
+
+    expect(seen.startsWith('Basic ')).toBe(true)
+    const bin = atob(seen.slice(6))
+    const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0))
+    expect(new TextDecoder().decode(bytes)).toBe('用户:密码')
   })
 })

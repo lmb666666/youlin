@@ -1,4 +1,4 @@
-import { backupEnvelope, type BackupEnvelope } from './format'
+import { BACKUP_VERSION, backupEnvelope, type BackupEnvelope } from './format'
 import { jsonError } from '../util/http'
 
 /** 备份文件编解码：gzip（两者运行时都原生支持 CompressionStream） */
@@ -40,6 +40,13 @@ export async function decodeBackup(bytes: Uint8Array): Promise<DecodedBackup> {
 
   let raw: Uint8Array
   if (isGzip(bytes)) {
+    // gzip 尾部 4 字节是解压后长度（mod 2^32）：先粗判，避免压缩炸弹把内存打满
+    if (bytes.length >= 18) {
+      const isize = new DataView(bytes.buffer, bytes.byteOffset + bytes.byteLength - 4, 4).getUint32(0, true)
+      if (isize > BACKUP_MAX_INFLATED) {
+        return { ok: false, response: jsonError(413, 'file_too_large', '解压后的备份体积超出上限') }
+      }
+    }
     try {
       raw = await gunzipBytes(bytes)
     } catch {
@@ -57,6 +64,15 @@ export async function decodeBackup(bytes: Uint8Array): Promise<DecodedBackup> {
     json = JSON.parse(new TextDecoder().decode(raw))
   } catch {
     return { ok: false, response: jsonError(400, 'invalid_json', '备份文件不是合法 JSON') }
+  }
+
+  // 版本号单独判断，给出“备份来自更新版本”的可操作提示
+  const version = (json as { version?: unknown }).version
+  if (typeof version === 'number' && version > BACKUP_VERSION) {
+    return {
+      ok: false,
+      response: jsonError(400, 'unsupported_version', `备份来自更新版本的友邻（v${version}），当前实例只支持 v${BACKUP_VERSION}，请先升级`),
+    }
   }
 
   const parsed = backupEnvelope.safeParse(json)

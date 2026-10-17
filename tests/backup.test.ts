@@ -279,6 +279,20 @@ describe('备份校验', () => {
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('broken_reference')
   })
 
+  it('更高版本的备份给出升级提示', async () => {
+    const future = {
+      format: 'youlin.backup',
+      version: 2,
+      exportedAt: '2026-01-01T00:00:00Z',
+      data: { groups: [], friends: [], applications: [], settings: {} },
+    }
+    const res = await postBackup('/api/admin/backup/preview', JSON.stringify(future))
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: { code: string; message: string } }
+    expect(body.error.code).toBe('unsupported_version')
+    expect(body.error.message).toContain('升级')
+  })
+
   it('损坏的 gzip 给出明确错误', async () => {
     const bytes = new Uint8Array([0x1f, 0x8b, 0x08, 0x00, 0x01, 0x02])
     const res = await postBackup('/api/admin/backup/preview', bytes)

@@ -143,6 +143,9 @@ export function backupRoutes() {
 
   app.post('/api/admin/backup/webdav/test', async (c) => {
     const cfg = c.get('cfg')
+    if (!webdavReady(cfg, c.env.WEBDAV_PASSWORD)) {
+      return jsonError(400, 'webdav_not_configured', 'WebDAV 未配置：请填写地址与用户名，并设置 WEBDAV_PASSWORD')
+    }
     try {
       const client = webdavClientFor(cfg, c.env.WEBDAV_PASSWORD)
       const result = await client.test()
@@ -172,6 +175,9 @@ export function backupRoutes() {
 
   app.get('/api/admin/backup/webdav/list', async (c) => {
     const cfg = c.get('cfg')
+    if (!webdavReady(cfg, c.env.WEBDAV_PASSWORD)) {
+      return jsonError(400, 'webdav_not_configured', 'WebDAV 未配置：请填写地址与用户名，并设置 WEBDAV_PASSWORD')
+    }
     try {
       const client = webdavClientFor(cfg, c.env.WEBDAV_PASSWORD)
       const files = await client.list()

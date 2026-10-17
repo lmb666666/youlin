@@ -72,12 +72,15 @@ function fmtTime(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
 }
 
-/** youlin-backup-20261017-140500.json.gz → 2026-10-17 14:05:00 */
+/** 文件名里的时间是 UTC；展示时转成本地时间，和「最近一次」保持一致 */
 function fmtBackupName(name: string): string {
   const m = /^(youlin-backup|pre-restore)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.json\.gz$/.exec(name)
   if (!m) return name
   const kind = m[1] === 'pre-restore' ? '恢复前存档' : '备份'
-  return `${kind} · ${m[2]}-${m[3]}-${m[4]} ${m[5]}:${m[6]}:${m[7]}`
+  const at = new Date(`${m[2]}-${m[3]}-${m[4]}T${m[5]}:${m[6]}:${m[7]}Z`)
+  return Number.isNaN(at.getTime())
+    ? `${kind} · ${m[2]}-${m[3]}-${m[4]} ${m[5]}:${m[6]}:${m[7]} UTC`
+    : `${kind} · ${at.toLocaleString()}`
 }
 
 const TARGET_LABEL = { download: '下载', webdav: 'WebDAV', 'pre-restore': '恢复前存档' } as const
@@ -95,12 +98,16 @@ export default function BackupPage() {
   const [davError, setDavError] = useState<string | null>(null)
   const [cloudTarget, setCloudTarget] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const hydrated = useRef(false)
 
   const loadStatus = useCallback(async () => {
     try {
       const s = await requestJson<StatusPayload>('/api/admin/backup/status')
       setStatus(s)
-      setIncludeArticles(s.backup.includeArticles)
+      if (!hydrated.current) {
+        setIncludeArticles(s.backup.includeArticles)
+        hydrated.current = true
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '加载备份状态失败')
     }
@@ -192,7 +199,8 @@ export default function BackupPage() {
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) },
       )
       const s = res.summary
-      toast.success(`恢复完成：${s.groups} 个分组、${s.friends} 条友链、${s.applications} 条申请、${s.settings} 项设置`)
+      const archived = res.preRestoreFile ? `；恢复前已存档 ${fmtBackupName(res.preRestoreFile)}` : ''
+      toast.success(`恢复完成：${s.groups} 个分组、${s.friends} 条友链、${s.applications} 条申请、${s.settings} 项设置${archived}`)
       refreshSettings()
       window.setTimeout(() => window.location.reload(), 900)
     } catch (err) {
@@ -254,11 +262,13 @@ export default function BackupPage() {
       const body = (await res.json()) as {
         ok?: boolean
         summary?: { groups: number; friends: number; applications: number; articles: number; settings: number }
+        preRestoreFile?: string | null
         error?: { message?: string }
       }
       if (!res.ok || !body.ok || !body.summary) throw new Error(body.error?.message ?? '恢复失败')
       const s = body.summary
-      toast.success(`恢复完成：${s.groups} 个分组、${s.friends} 条友链、${s.applications} 条申请、${s.settings} 项设置`)
+      const archived = body.preRestoreFile ? `；恢复前已存档 ${fmtBackupName(body.preRestoreFile)}` : ''
+      toast.success(`恢复完成：${s.groups} 个分组、${s.friends} 条友链、${s.applications} 条申请、${s.settings} 项设置${archived}`)
       refreshSettings()
       setConfirmOpen(false)
       setFile(null)
@@ -295,7 +305,7 @@ export default function BackupPage() {
         <CardContent className="grid gap-3">
           <label className="flex items-center gap-2 text-sm">
             <Switch checked={includeArticles} onCheckedChange={setIncludeArticles} />
-            包含文章与体检状态
+            本次备份包含文章与体检状态
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <Button onClick={() => void download()} disabled={busy !== null}>

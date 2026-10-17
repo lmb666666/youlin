@@ -48,6 +48,14 @@ export function joinDavUrl(base: string, ...segments: string[]): string {
   return extra ? `${root}/${extra}` : root
 }
 
+/** Basic 认证：凭据按 UTF-8 编码再 base64（btoa 直接吃中文会抛 InvalidCharacterError） */
+function basicToken(user: string, pass: string): string {
+  const bytes = new TextEncoder().encode(`${user}:${pass}`)
+  let bin = ''
+  for (const b of bytes) bin += String.fromCharCode(b)
+  return btoa(bin)
+}
+
 function toArray<T>(v: T | T[] | undefined): T[] {
   if (v === undefined) return []
   return Array.isArray(v) ? v : [v]
@@ -93,7 +101,7 @@ export class WebDavClient {
   }
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
-    const token = btoa(`${this.username}:${this.password}`)
+    const token = basicToken(this.username, this.password)
     return {
       Authorization: `Basic ${token}`,
       'User-Agent': 'Youlin/1.0 (backup)',
@@ -121,6 +129,9 @@ export class WebDavClient {
     const res = await this.request('MKCOL', this.base)
     // 201 新建；405 已存在；部分服务端对已存在返回 301/302
     if (![201, 200, 204, 405].includes(res.status) && !(res.status >= 300 && res.status < 400)) {
+      if (res.status === 409) {
+        throw new WebDavError('创建 WebDAV 目录失败（409）：上级目录不存在，请先在 WebDAV 里建好，或把「WebDAV 目录」改成已存在的位置', 409)
+      }
       throw new WebDavError(`创建 WebDAV 目录失败（${res.status}）`, res.status)
     }
   }

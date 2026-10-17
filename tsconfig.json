@@ -13,5 +13,5 @@
     "noEmit": true
   },
   "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.mjs"],
-  "exclude": ["web"]
+  "exclude": ["web", "src/server", "tests/node"]
 }

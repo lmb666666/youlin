@@ -75,10 +75,12 @@ export async function verifySession(cookie: string, secret: string, now = Date.n
 }
 
 export function cookieOptions(c: Context, maxAgeSeconds: number) {
+  // 直连看协议；反代终止 TLS 时看 X-Forwarded-Proto（Cloudflare 与 Caddy/Nginx 都会带）
+  const forwarded = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim()
   return {
     path: '/',
     httpOnly: true,
-    secure: new URL(c.req.url).protocol === 'https:',
+    secure: new URL(c.req.url).protocol === 'https:' || forwarded === 'https',
     sameSite: 'Lax',
     maxAge: maxAgeSeconds,
   } as const
