@@ -1,6 +1,6 @@
 # 部署指南
 
-友邻是单租户应用：**一个部署实例服务一个站点**。个人博客规模下，全部运行在 Cloudflare 免费额度内（**0 元/月**）。
+友邻是单租户应用：**一个部署实例服务一个站点**。部署有两条路——Cloudflare Workers（方式一至三，个人规模在免费额度内，**0 元/月**）或自己的服务器（[Docker](#docker自建服务器)，只需要一个容器和一块数据卷）。
 
 ## 前置条件
 
@@ -65,6 +65,77 @@ pnpm deploy                        # 构建 + 迁移 + 部署（等价于手动�
 4. 添加密钥 `ADMIN_TOKEN`（及可选的 `TURNSTILE_SECRET` / `GITHUB_PAT`）。创建向导里没有填密钥的位置时，部署完成后到 Worker 的 **Settings → Variables and Secrets** 添加，再 Retry deployment 一次。
 5. 首次构建会完成建表与部署；以后 push 即自动构建/部署，PR 会有预览地址。
 
+## Docker（自建服务器）
+
+适合希望大陆访问更快、或不想依赖 Cloudflare 的场景。镜像里是 Node 运行时 + SQLite，与 Workers 版本跑同一份代码：接口、管理台、备份功能完全一致。
+
+### 1. 启动
+
+```bash
+git clone https://github.com/lmb666666/youlin.git && cd youlin
+cp .env.example .env      # 填 ADMIN_TOKEN（openssl rand -hex 32）
+docker compose up -d      # 默认拉取 ghcr.io/lmb666666/youlin:latest
+```
+
+打开 `http://<服务器>:8787/admin` 登录。数据在命名卷 `youlin_youlin-data`（容器内 `/data/youlin.db`），首次启动自动建表，重启和升级都不丢数据。镜像同时提供 amd64 与 arm64，NAS、ARM 小主机也能跑。
+
+想自己构建镜像：把 `compose.yaml` 里的 `image:` 换成 `build: .`，然后 `docker compose up -d --build`。
+
+### 2. 环境变量
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `ADMIN_TOKEN` | 无（必填） | 管理台口令，同时是会话签名密钥 |
+| `PORT` | `8787` | 容器内监听端口 |
+| `DB_PATH` | `/data/youlin.db` | SQLite 文件路径（含 WAL） |
+| `CRON_ENABLED` | `true` | 是否在进程内跑抓取轮转与自动备份 |
+| `CRON_INTERVAL_SECONDS` | `300` | 定时作业的检查间隔，最小 30 秒 |
+| `TURNSTILE_SECRET` | 空 | 申请页人机验证；开启 `apply.turnstile` 时才需要 |
+| `WEBDAV_PASSWORD` | 空 | WebDAV 备份密码（地址与用户名在设置页） |
+| `GITHUB_PAT` | 空 | 触发接入方重建（`github_dispatch` 模式） |
+| `YOULIN_CONFIG_OVERRIDES` | 空 | JSON 配置覆盖，优先级高于设置页 |
+
+单实例部署：SQLite 是单写者，不要同时起多个副本挂同一个数据卷。
+
+### 3. HTTPS 与反向代理
+
+容器只提供 HTTP。推荐用 Caddy 在前面终止 TLS 并做 brotli 压缩：
+
+```caddyfile
+links.example.com {
+    reverse_proxy 127.0.0.1:8787
+}
+```
+
+同时把 compose 的端口改成只绑本机：`ports: ["127.0.0.1:8787:8787"]`，只让反代访问。
+
+用 Nginx 的话，转发到 `127.0.0.1:8787` 并开启 gzip；注意 `proxy_set_header Host $host`，Cookie 的 `Secure` 属性按请求协议判断，反代终止 TLS 时不需要额外配置。
+
+### 4. 升级
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+启动时自动应用增量迁移（`d1_migrations` 表跟踪已执行的文件），配置新增项自带默认值。
+
+### 5. 在 Cloudflare 与 Docker 之间迁移
+
+两边都用同一份备份格式：
+
+1. 旧实例「备份」页下载备份（建议勾选「包含文章与体检状态」）。
+2. 新实例「备份」页选择文件恢复，核对分组、友链、申请与设置。
+
+详见[备份与恢复](backup.md)。
+
+### 6. 大陆部署注意事项
+
+- **备案**：服务器在中国大陆时，对外提供 Web 服务需要 ICP 备案。放香港、新加坡等境外区域通常不需要备案，从大陆访问也比 `workers.dev` 明显更快。
+- **Turnstile**：申请页的人机验证依赖 `challenges.cloudflare.com`，大陆访客可能加载不稳定。建议在设置里关闭 `apply.turnstile`，或接受部分提交失败。
+- **镜像拉取**：ghcr.io 在大陆可能较慢，可以给 Docker 配镜像加速，或在服务器上 `git clone` 后用 `build: .` 本地构建。
+- **抓取源**：朋友圈抓取从服务器所在网络发起，部分海外源可能超时；抓取器有超时与退避，不会卡住整轮。
+- **别在前面再套 Cloudflare 代理**：代理回源会重新引入原来的慢路径。
+
 ## 自定义域名
 
 部署完成后在面板绑定即可（无需改代码）：
@@ -97,6 +168,8 @@ pnpm deploy        # 自动执行增量迁移（迁移文件只增不改）
 
 唯一可选的付费项：Workers Paid（$5/月）可以把「每 5 分钟 3 站的轮转」放大为更激进的抓取节奏——默认设计不需要。
 
+走 Docker 的话成本只取决于服务器本身：512MB 内存、一块 1GB 数据盘足够个人使用。
+
 ## 常见问题
 
 | 现象 | 原因与处理 |
@@ -110,3 +183,6 @@ pnpm deploy        # 自动执行增量迁移（迁移文件只增不改）
 | 接口响应是旧数据 | 接口默认缓存 5 分钟（`api.cacheSeconds` 可调）；这是设计行为 |
 | 想撤销隐藏某条友链 | 管理台友链页点该行的「显示」按钮；`hidden` 记录不出现在友链数据接口 |
 | 想接可用性监控 | 用 `GET /healthz`：查一次 D1，返回 `{"ok":true,"db":true}`，正常 200、数据库不可用 503，响应禁用缓存，适合 UptimeRobot 一类探针 |
+| Docker 容器起来了但浏览器打不开 | 先看 `docker compose ps` 与 `docker compose logs`；确认端口映射与外网防火墙。只绑了 `127.0.0.1` 时需要通过反代访问 |
+| Docker 报数据库无法写入（SQLITE_CANTOPEN） | 用了 bind mount 且目录属主不是 uid 1000。执行 `sudo chown -R 1000:1000 ./data`，或改用默认的命名卷 |
+| WebDAV 备份报认证失败 | 密码只从 `WEBDAV_PASSWORD` 读取；确认 Secret 已设置且用户名与地址正确 |

@@ -1,4 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Database from 'better-sqlite3'
@@ -179,21 +181,35 @@ describe('Node 上的应用', () => {
   })
 
   it('静态资源与 SPA fallback 由 Node 处理器负责', async () => {
-    const { createFetchHandler } = await import('../../src/server/assets')
-    const handler = createFetchHandler(path.join(ROOT, 'web/dist'), (req, e) => app.fetch(req, e, undefined))
+    // 自建临时静态目录，不依赖 pnpm build（CI 里 test 先于 build）
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'youlin-web-'))
+    fs.mkdirSync(path.join(root, 'assets'))
+    fs.writeFileSync(path.join(root, 'index.html'), '<!doctype html><title>youlin</title>')
+    fs.writeFileSync(path.join(root, 'assets', 'app-abc123.js'), 'console.log(1)')
 
-    const api = await handler(new Request('http://local/api/links'), env)
-    expect(api.headers.get('content-type')).toContain('application/json')
+    try {
+      const { createFetchHandler } = await import('../../src/server/assets')
+      const handler = createFetchHandler(root, (req, e) => app.fetch(req, e, undefined))
 
-    const spa = await handler(new Request('http://local/admin/links'), env)
-    expect(spa.status).toBe(200)
-    expect(spa.headers.get('content-type')).toContain('text/html')
-    expect(spa.headers.get('cache-control')).toBe('no-cache')
+      const api = await handler(new Request('http://local/api/links'), env)
+      expect(api.headers.get('content-type')).toContain('application/json')
 
-    const missingAsset = await handler(new Request('http://local/assets/nope.js'), env)
-    expect(missingAsset.status).toBe(404)
+      const spa = await handler(new Request('http://local/admin/links'), env)
+      expect(spa.status).toBe(200)
+      expect(spa.headers.get('content-type')).toContain('text/html')
+      expect(spa.headers.get('cache-control')).toBe('no-cache')
 
-    const traversal = await handler(new Request('http://local/../package.json'), env)
-    expect(traversal.status).not.toBe(200)
+      const asset = await handler(new Request('http://local/assets/app-abc123.js'), env)
+      expect(asset.status).toBe(200)
+      expect(asset.headers.get('cache-control')).toContain('immutable')
+
+      const missingAsset = await handler(new Request('http://local/assets/nope.js'), env)
+      expect(missingAsset.status).toBe(404)
+
+      const traversal = await handler(new Request('http://local/../package.json'), env)
+      expect(traversal.status).not.toBe(200)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
   })
 })

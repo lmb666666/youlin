@@ -5,11 +5,11 @@
 [![CI](https://github.com/lmb666666/youlin/actions/workflows/ci.yml/badge.svg)](https://github.com/lmb666666/youlin/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-友邻是一个自托管的友链和朋友圈管理台，部署在 Cloudflare Workers 上。
+友邻是一个自托管的友链和朋友圈管理台。可以一键部署到 Cloudflare Workers，也可以用 Docker Compose 跑在自己的服务器上（大陆访问更快）。
 
 以前加友链需要修改数据文件、等构建，朋友圈要单独维护脚本，友链申请散落在评论区；现在这些工作都在一个网页里完成。博客端不需要安装任何东西，fetch 两个接口即可渲染。
 
-项目 MIT 开源，单实例部署，个人站点在 Cloudflare 免费额度内运行。
+项目 MIT 开源，单实例部署：Cloudflare 免费额度内就能跑，自建服务器只需要一个容器和一块数据卷。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-dashboard-dark.png">
@@ -55,6 +55,12 @@
 
 - 所有配置项都有默认值，不做修改也能运行；设置页根据配置定义自动生成表单
 - 配置可以导出、导入，也可以用 `YOULIN_CONFIG_OVERRIDES` 环境变量覆盖
+
+### 备份
+
+- 完整备份含分组、友链、申请与设置，导出为 `.json.gz`；文章与体检状态是派生数据，可选
+- 配置 WebDAV 后按小时 / 天 / 周自动上传，只保留最近 N 份；也能直接列出云端备份恢复
+- 恢复是覆盖式：先自动存档当前数据（未配 WebDAV 时要求先下载），同一文件可以重跑
 
 ## 接口 | API
 
@@ -124,7 +130,7 @@ const { groups } = await (await fetch('https://你的实例.workers.dev/api/link
 
 ## 快速上手 | Quick Start
 
-### 部署
+### 部署到 Cloudflare
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lmb666666/youlin)
 
@@ -134,6 +140,18 @@ const { groups } = await (await fetch('https://你的实例.workers.dev/api/link
 4. 等构建结束，打开 `https://<项目名>.<你的子域>.workers.dev/admin` 登录，在设置中填写主站地址
 
 不想连接 Git 账号的话，也可以用命令行部署（见[部署指南](docs/deployment.md)）；自定义域名与版本升级同样在指南里。
+
+### 部署到自己的服务器（Docker）
+
+适合希望大陆访问更快的场景。镜像是 Node 运行时 + SQLite，数据放在命名卷里，升级只换镜像。
+
+```bash
+cp .env.example .env      # 填 ADMIN_TOKEN（openssl rand -hex 32）
+docker compose up -d      # 拉取 ghcr.io/lmb666666/youlin:latest
+```
+
+打开 `http://<服务器>:8787/admin` 登录即可。镜像同时提供 amd64 / arm64；升级用 `docker compose pull && docker compose up -d`。
+反向代理、HTTPS、备份与数据迁移见[部署指南](docs/deployment.md#docker) 与[备份与恢复](docs/backup.md)。
 
 ### 本地开发
 
@@ -148,7 +166,8 @@ pnpm dev                         # http://127.0.0.1:8787/admin
 
 ## 文档 | Documentation
 
-- [部署指南](docs/deployment.md)：三种部署方式、自定义域名、升级、常见问题
+- [部署指南](docs/deployment.md)：Cloudflare 与 Docker 部署、自定义域名、升级、常见问题
+- [备份与恢复](docs/backup.md)：备份格式、WebDAV 自动备份、覆盖式恢复与实例迁移
 - [接口文档](docs/api.md)：三个接口的字段、参数和错误码
 - [配置参考](docs/configuration.md)：全部配置项和默认值
 - [贡献指南](CONTRIBUTING.md)：开发环境、测试要求、提交约定

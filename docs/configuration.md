@@ -142,6 +142,20 @@
 | `ui.accentColor` | 空 | 强调色。管理台主色，留空用默认。 |
 | `ui.pageSize` | `20` | 分页大小。列表页每页条数。 |
 
+### 备份（`backup.*`）
+
+完整备份与恢复。WebDAV 密码请在 Secret 中配置（WEBDAV_PASSWORD），不随备份导出。
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `backup.enabled` | `false` | 自动备份。按下面的周期自动备份到 WebDAV。 |
+| `backup.schedule` | `daily` | 备份周期（hourly / daily / weekly）。自动备份的最小间隔。 |
+| `backup.includeArticles` | `false` | 包含文章。文章与体检状态可以重新抓取，默认不备份以减小体积。 |
+| `backup.retain` | `7` | 保留份数。WebDAV 上最多保留的备份文件数，超出按时间删除最旧的。 |
+| `backup.webdavUrl` | 空 | WebDAV 地址。如 https://dav.example.com/remote.php/dav/files/me/ |
+| `backup.webdavUsername` | 空 | WebDAV 用户名。密码请在 Secret 中配置（WEBDAV_PASSWORD）。 |
+| `backup.webdavPath` | `youlin` | WebDAV 目录。相对于地址的子目录，留空即用地址本身。 |
+
 ### 安全（`security.*`）
 
 会话与登录保护（部署级密钥在 wrangler secrets，不在此处）。
