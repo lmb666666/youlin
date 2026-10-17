@@ -147,7 +147,7 @@ export default function SettingsPage() {
 
       <p className="pb-6 text-center text-xs text-muted-foreground">
         <RotateCcw className="mr-1 inline size-3" />
-        配置优先级：环境变量 YOULIN_CONFIG_OVERRIDES &gt; 此处设置 &gt; 代码默认值
+        优先级：环境变量 &gt; 此处设置 &gt; 默认值
       </p>
     </div>
   )
@@ -198,9 +198,7 @@ function FieldControl(props: {
 
   return (
     <div className={`grid gap-1.5 ${f.full ? 'md:col-span-2' : ''}`}>
-      <Label htmlFor={id} className="text-xs" title={f.key}>
-        {f.label} <span className="text-muted-foreground/60">{f.key}</span>
-      </Label>
+      <Label htmlFor={id} className="text-xs">{f.label}</Label>
       {f.type === 'boolean' && (
         <div className="flex items-center gap-2 py-1">
           <Switch id={id} checked={value === true} onCheckedChange={onChange} />

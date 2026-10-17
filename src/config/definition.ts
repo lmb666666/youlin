@@ -41,7 +41,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     description: '站点基础信息，用于管理台、申请页与抓取 UA。',
     fields: [
       { key: 'site.name', type: 'string', default: '我的博客', label: '站点名称', description: '管理台与申请页标题。' },
-      { key: 'site.url', type: 'string', default: '', label: '主站地址', description: '反链检测的默认目标，如 https://example.com', placeholder: 'https://example.com' },
+      { key: 'site.url', type: 'string', default: '', label: '主站地址', description: '反链检测的目标，如 https://example.com', placeholder: 'https://example.com' },
       { key: 'site.logo', type: 'string', default: '', label: '站点 Logo', description: '申请页显示（可选）。', placeholder: 'https://…/logo.png' },
       { key: 'site.description', type: 'text', default: '', label: '站点简介', description: '申请页副标题（可选）。', full: true },
       { key: 'site.timezone', type: 'string', default: 'Asia/Shanghai', label: '时区', description: '管理台与申请页的时间显示。' },
@@ -51,7 +51,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
   {
     key: 'crawl',
     label: '朋友圈抓取',
-    description: '按分批轮转设计执行，避免超出 Workers 免费版单次 10ms CPU。',
+    description: '分批轮转，适配 Workers 免费额度。',
     fields: [
       { key: 'crawl.enabled', type: 'boolean', default: true, label: '抓取总开关', description: '关闭后停止抓取，已有数据照常输出。' },
       { key: 'crawl.batchSize', type: 'number', default: 3, min: 1, max: 50, label: '每轮站点数', description: '与 Cron 频率共同决定刷新周期。' },
@@ -89,7 +89,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     description: '检测对方站点是否含有指向你站点的链接。',
     fields: [
       { key: 'backlink.enabled', type: 'boolean', default: true, label: '反链检测', description: '体检与申请流程共用的开关。' },
-      { key: 'backlink.authorUrl', type: 'string', default: '', label: '自家域名', description: '默认取 site.url；填写后以此为准，如 example.com 或 https://example.com。', placeholder: 'example.com' },
+      { key: 'backlink.authorUrl', type: 'string', default: '', label: '自家域名', description: '默认取主站地址；可填 example.com 或完整 URL。', placeholder: 'example.com' },
     ],
   },
   {
@@ -106,10 +106,10 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     label: '友链申请',
     description: '公开申请页的行为。',
     fields: [
-      { key: 'apply.enabled', type: 'boolean', default: true, label: '申请通道', description: '关闭后 /apply 显示停用提示，POST /apply 返回 403。' },
+      { key: 'apply.enabled', type: 'boolean', default: true, label: '申请通道', description: '关闭后申请页显示停用。' },
       { key: 'apply.rateLimitPerDay', type: 'number', default: 3, min: 1, max: 100, label: '每 IP 每天上限', description: '按天限流，超出返回 429。' },
       { key: 'apply.turnstile', type: 'boolean', default: true, label: '人机验证', description: '关闭后提交不再验证人机。' },
-      { key: 'apply.turnstileSiteKey', type: 'string', default: '', label: 'Turnstile Site Key', description: '公开值；Secret（TURNSTILE_SECRET）在部署级配置。' },
+      { key: 'apply.turnstileSiteKey', type: 'string', default: '', label: 'Turnstile Site Key', description: '公开值，密钥放 TURNSTILE_SECRET。' },
       { key: 'apply.backlinkPolicy', type: 'enum', options: ['mark', 'reject', 'off'], default: 'mark', label: '反链策略', description: 'mark 仅标记 / reject 未检测到反链即拒绝 / off 不检测。' },
       { key: 'apply.autoApprove', type: 'boolean', default: false, label: '自动通过', description: '提交即入库（不推荐，垃圾提交无人工拦截）。' },
       { key: 'apply.requiredFields', type: 'stringList', default: ['siteName', 'link'], label: '必填字段', description: '申请表单的必填字段。' },
@@ -122,7 +122,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     label: '接口',
     description: '对外接口的缓存与输出行为。',
     fields: [
-      { key: 'api.cacheSeconds', type: 'number', default: 300, min: 0, max: 86400, label: '边缘缓存（秒）', description: '友链数据与朋友圈数据的 Cache-Control。' },
+      { key: 'api.cacheSeconds', type: 'number', default: 300, min: 0, max: 86400, label: '边缘缓存（秒）', description: '接口响应的缓存秒数。' },
       { key: 'api.corsOrigin', type: 'string', default: '*', label: 'CORS 来源', description: '允许的 Origin，* 或具体来源。' },
       { key: 'api.includeHidden', type: 'boolean', default: false, label: '输出隐藏记录', description: '开启后隐藏的友链也会出现在友链数据接口。' },
       { key: 'api.maxLimit', type: 'number', default: 500, min: 1, max: 5000, label: 'limit 上限', description: '?limit= 允许的最大值。' },
@@ -131,12 +131,12 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
   {
     key: 'rebuild',
     label: '重建集成',
-    description: '可选：数据变化后触发接入方站点重建（仅构建时接入需要）。',
+    description: '可选：数据变化后触发接入方重建。',
     fields: [
       { key: 'rebuild.enabled', type: 'boolean', default: false, label: '启用重建', description: '运行时接入无需开启。' },
-      { key: 'rebuild.provider', type: 'enum', options: ['webhook', 'github_dispatch'], default: 'webhook', label: '触发方式', description: 'webhook 通用 POST / github_dispatch 仓库事件。' },
+      { key: 'rebuild.provider', type: 'enum', options: ['webhook', 'github_dispatch'], default: 'webhook', label: '触发方式', description: 'webhook 通用 POST；github_dispatch 仓库事件。' },
       { key: 'rebuild.webhookUrl', type: 'string', default: '', label: 'Webhook 地址', description: 'provider=webhook 时的目标 URL。', placeholder: 'https://api.cloudflare.com/pages/webhooks/deploy_hooks/…' },
-      { key: 'rebuild.githubRepo', type: 'string', default: '', label: 'GitHub 仓库', description: 'provider=github_dispatch 时，owner/name。', placeholder: 'owner/name' },
+      { key: 'rebuild.githubRepo', type: 'string', default: '', label: 'GitHub 仓库', description: 'owner/name，仅 github_dispatch 需要。', placeholder: 'owner/name' },
       { key: 'rebuild.eventType', type: 'string', default: 'friends-updated', label: '事件类型', description: 'repository_dispatch 的事件名。' },
       { key: 'rebuild.auto', type: 'boolean', default: false, label: '自动触发', description: '数据变更后自动触发。' },
       { key: 'rebuild.debounceSeconds', type: 'number', default: 60, min: 0, max: 3600, label: '防抖（秒）', description: '两次触发之间的最小间隔。' },
@@ -155,24 +155,24 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
   {
     key: 'backup',
     label: '备份',
-    description: '完整备份与恢复。WebDAV 密码请在 Secret 中配置（WEBDAV_PASSWORD），不随备份导出。',
+    description: '完整备份与恢复；WebDAV 密码放 WEBDAV_PASSWORD。',
     fields: [
-      { key: 'backup.enabled', type: 'boolean', default: false, label: '自动备份', description: '按下面的周期自动备份到 WebDAV。' },
+      { key: 'backup.enabled', type: 'boolean', default: false, label: '自动备份', description: '按周期自动备份到 WebDAV。' },
       { key: 'backup.schedule', type: 'enum', options: ['hourly', 'daily', 'weekly'], default: 'daily', label: '备份周期', description: '自动备份的最小间隔。' },
-      { key: 'backup.includeArticles', type: 'boolean', default: false, label: '包含文章', description: '文章与体检状态可以重新抓取，默认不备份以减小体积。' },
-      { key: 'backup.retain', type: 'number', default: 7, min: 1, max: 100, label: '保留份数', description: 'WebDAV 上最多保留的备份文件数，超出按时间删除最旧的。' },
-      { key: 'backup.webdavUrl', type: 'string', default: '', label: 'WebDAV 地址', description: '如 https://dav.example.com/remote.php/dav/files/me/', placeholder: 'https://…' },
-      { key: 'backup.webdavUsername', type: 'string', default: '', label: 'WebDAV 用户名', description: '密码请在 Secret 中配置（WEBDAV_PASSWORD）。' },
+      { key: 'backup.includeArticles', type: 'boolean', default: false, label: '包含文章', description: '文章可重新抓取，默认不备以减小体积。' },
+      { key: 'backup.retain', type: 'number', default: 7, min: 1, max: 100, label: '保留份数', description: '最多保留几份，超出删最旧的。' },
+      { key: 'backup.webdavUrl', type: 'string', default: '', label: 'WebDAV 地址', description: '如 https://dav.example.com/remote.php/dav/files/你/', placeholder: 'https://…' },
+      { key: 'backup.webdavUsername', type: 'string', default: '', label: 'WebDAV 用户名', description: '密码放 WEBDAV_PASSWORD。' },
       { key: 'backup.webdavPath', type: 'string', default: 'youlin', label: 'WebDAV 目录', description: '相对于地址的子目录，留空即用地址本身。' },
     ],
   },
   {
     key: 'security',
     label: '安全',
-    description: '会话与登录保护（部署级密钥在 wrangler secrets，不在此处）。',
+    description: '会话与登录保护。',
     fields: [
       { key: 'security.sessionDays', type: 'number', default: 30, min: 1, max: 365, label: '会话有效期（天）', description: '登录 Cookie 的有效期。' },
-      { key: 'security.loginRateLimit', type: 'number', default: 5, min: 1, max: 100, label: '登录限流（次/小时）', description: '单 IP 每小时登录尝试上限，超出返回 429。' },
+      { key: 'security.loginRateLimit', type: 'number', default: 5, min: 1, max: 100, label: '登录限流（次/小时）', description: '单 IP 每小时上限。' },
     ],
   },
   {

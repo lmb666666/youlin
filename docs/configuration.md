@@ -38,7 +38,7 @@
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
 | `site.name` | `我的博客` | 站点名称。管理台与申请页标题。 |
-| `site.url` | 空 | 主站地址。反链检测的默认目标，如 https://example.com |
+| `site.url` | 空 | 主站地址。反链检测的目标，如 https://example.com |
 | `site.logo` | 空 | 站点 Logo。申请页显示（可选）。 |
 | `site.description` | 空 | 站点简介。申请页副标题（可选）。 |
 | `site.timezone` | `Asia/Shanghai` | 时区。管理台与申请页的时间显示。 |
@@ -46,7 +46,7 @@
 
 ### 朋友圈抓取（`crawl.*`）
 
-按分批轮转设计执行，避免超出 Workers 免费版单次 10ms CPU。
+分批轮转，适配 Workers 免费额度。
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -80,7 +80,7 @@
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
 | `backlink.enabled` | `true` | 反链检测。体检与申请流程共用的开关。 |
-| `backlink.authorUrl` | 空 | 自家域名。默认取 site.url；填写后以此为准，如 example.com 或 https://example.com。 |
+| `backlink.authorUrl` | 空 | 自家域名。默认取主站地址；可填 example.com 或完整 URL。 |
 
 ### 代理（`proxy.*`）
 
@@ -97,10 +97,10 @@
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `apply.enabled` | `true` | 申请通道。关闭后 /apply 显示停用提示，POST /apply 返回 403。 |
+| `apply.enabled` | `true` | 申请通道。关闭后申请页显示停用。 |
 | `apply.rateLimitPerDay` | `3` | 每 IP 每天上限。按天限流，超出返回 429。 |
 | `apply.turnstile` | `true` | 人机验证。关闭后提交不再验证人机。 |
-| `apply.turnstileSiteKey` | 空 | Turnstile Site Key。公开值；Secret（TURNSTILE_SECRET）在部署级配置。 |
+| `apply.turnstileSiteKey` | 空 | Turnstile Site Key。公开值，密钥放 TURNSTILE_SECRET。 |
 | `apply.backlinkPolicy` | `mark` | 反链策略（mark / reject / off）。mark 仅标记 / reject 未检测到反链即拒绝 / off 不检测。 |
 | `apply.autoApprove` | `false` | 自动通过。提交即入库（不推荐，垃圾提交无人工拦截）。 |
 | `apply.requiredFields` | `["siteName","link"]` | 必填字段。申请表单的必填字段。 |
@@ -113,21 +113,21 @@
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `api.cacheSeconds` | `300` | 边缘缓存（秒）。友链数据与朋友圈数据的 Cache-Control。 |
+| `api.cacheSeconds` | `300` | 边缘缓存（秒）。接口响应的缓存秒数。 |
 | `api.corsOrigin` | `*` | CORS 来源。允许的 Origin，* 或具体来源。 |
 | `api.includeHidden` | `false` | 输出隐藏记录。开启后隐藏的友链也会出现在友链数据接口。 |
 | `api.maxLimit` | `500` | limit 上限。?limit= 允许的最大值。 |
 
 ### 重建集成（`rebuild.*`）
 
-可选：数据变化后触发接入方站点重建（仅构建时接入需要）。
+可选：数据变化后触发接入方重建。
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
 | `rebuild.enabled` | `false` | 启用重建。运行时接入无需开启。 |
-| `rebuild.provider` | `webhook` | 触发方式（webhook / github_dispatch）。webhook 通用 POST / github_dispatch 仓库事件。 |
+| `rebuild.provider` | `webhook` | 触发方式（webhook / github_dispatch）。webhook 通用 POST；github_dispatch 仓库事件。 |
 | `rebuild.webhookUrl` | 空 | Webhook 地址。provider=webhook 时的目标 URL。 |
-| `rebuild.githubRepo` | 空 | GitHub 仓库。provider=github_dispatch 时，owner/name。 |
+| `rebuild.githubRepo` | 空 | GitHub 仓库。owner/name，仅 github_dispatch 需要。 |
 | `rebuild.eventType` | `friends-updated` | 事件类型。repository_dispatch 的事件名。 |
 | `rebuild.auto` | `false` | 自动触发。数据变更后自动触发。 |
 | `rebuild.debounceSeconds` | `60` | 防抖（秒）。两次触发之间的最小间隔。 |
@@ -144,26 +144,26 @@
 
 ### 备份（`backup.*`）
 
-完整备份与恢复。WebDAV 密码请在 Secret 中配置（WEBDAV_PASSWORD），不随备份导出。
+完整备份与恢复；WebDAV 密码放 WEBDAV_PASSWORD。
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `backup.enabled` | `false` | 自动备份。按下面的周期自动备份到 WebDAV。 |
+| `backup.enabled` | `false` | 自动备份。按周期自动备份到 WebDAV。 |
 | `backup.schedule` | `daily` | 备份周期（hourly / daily / weekly）。自动备份的最小间隔。 |
-| `backup.includeArticles` | `false` | 包含文章。文章与体检状态可以重新抓取，默认不备份以减小体积。 |
-| `backup.retain` | `7` | 保留份数。WebDAV 上最多保留的备份文件数，超出按时间删除最旧的。 |
-| `backup.webdavUrl` | 空 | WebDAV 地址。如 https://dav.example.com/remote.php/dav/files/me/ |
-| `backup.webdavUsername` | 空 | WebDAV 用户名。密码请在 Secret 中配置（WEBDAV_PASSWORD）。 |
+| `backup.includeArticles` | `false` | 包含文章。文章可重新抓取，默认不备以减小体积。 |
+| `backup.retain` | `7` | 保留份数。最多保留几份，超出删最旧的。 |
+| `backup.webdavUrl` | 空 | WebDAV 地址。如 https://dav.example.com/remote.php/dav/files/你/ |
+| `backup.webdavUsername` | 空 | WebDAV 用户名。密码放 WEBDAV_PASSWORD。 |
 | `backup.webdavPath` | `youlin` | WebDAV 目录。相对于地址的子目录，留空即用地址本身。 |
 
 ### 安全（`security.*`）
 
-会话与登录保护（部署级密钥在 wrangler secrets，不在此处）。
+会话与登录保护。
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
 | `security.sessionDays` | `30` | 会话有效期（天）。登录 Cookie 的有效期。 |
-| `security.loginRateLimit` | `5` | 登录限流（次/小时）。单 IP 每小时登录尝试上限，超出返回 429。 |
+| `security.loginRateLimit` | `5` | 登录限流（次/小时）。单 IP 每小时上限。 |
 
 ### 通知（v1.1 预留）（`notify.*`）
 
