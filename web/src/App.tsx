@@ -8,6 +8,7 @@ import ApplicationsPage from '@/pages/applications'
 import DashboardPage from '@/pages/dashboard'
 import IntegrationPage from '@/pages/integration'
 import ImportPage from '@/pages/import'
+import BackupPage from '@/pages/backup'
 import SettingsPage from '@/pages/settings'
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/admin/health" element={<HealthPage />} />
         <Route path="/admin/applications" element={<ApplicationsPage />} />
         <Route path="/admin/import" element={<ImportPage />} />
+        <Route path="/admin/backup" element={<BackupPage />} />
         <Route path="/admin/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />

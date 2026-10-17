@@ -5,6 +5,8 @@ export interface Env {
   ADMIN_TOKEN: string
   TURNSTILE_SECRET?: string
   GITHUB_PAT?: string
+  /** WebDAV 备份密码（Basic 认证；只读环境变量，不写库、不进备份） */
+  WEBDAV_PASSWORD?: string
   /** 覆盖级配置：JSON 文本，扁平 camelCase 点号键（DESIGN §9） */
   YOULIN_CONFIG_OVERRIDES?: string
   ASSETS: Fetcher
@@ -78,6 +80,15 @@ export interface AppConfig {
     theme: 'system' | 'light' | 'dark'
     accentColor: string
     pageSize: number
+  }
+  backup: {
+    enabled: boolean
+    schedule: 'hourly' | 'daily' | 'weekly'
+    includeArticles: boolean
+    retain: number
+    webdavUrl: string
+    webdavUsername: string
+    webdavPath: string
   }
   security: {
     sessionDays: number

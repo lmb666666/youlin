@@ -10,6 +10,7 @@ import { exportRoutes } from './export'
 import { crawlerRoutes } from './crawler'
 import { applicationRoutes } from './applications'
 import { statsRoutes } from './stats'
+import { backupRoutes } from './backup'
 
 export function adminRoutes() {
   const app = new Hono<AppEnv>()
@@ -24,6 +25,7 @@ export function adminRoutes() {
   app.route('/', crawlerRoutes())
   app.route('/', applicationRoutes())
   app.route('/', statsRoutes())
+  app.route('/', backupRoutes())
 
   return app
 }

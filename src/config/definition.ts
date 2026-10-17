@@ -153,6 +153,20 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     ],
   },
   {
+    key: 'backup',
+    label: '备份',
+    description: '完整备份与恢复。WebDAV 密码请在 Secret 中配置（WEBDAV_PASSWORD），不随备份导出。',
+    fields: [
+      { key: 'backup.enabled', type: 'boolean', default: false, label: '自动备份', description: '按下面的周期自动备份到 WebDAV。' },
+      { key: 'backup.schedule', type: 'enum', options: ['hourly', 'daily', 'weekly'], default: 'daily', label: '备份周期', description: '自动备份的最小间隔。' },
+      { key: 'backup.includeArticles', type: 'boolean', default: false, label: '包含文章', description: '文章与体检状态可以重新抓取，默认不备份以减小体积。' },
+      { key: 'backup.retain', type: 'number', default: 7, min: 1, max: 100, label: '保留份数', description: 'WebDAV 上最多保留的备份文件数，超出按时间删除最旧的。' },
+      { key: 'backup.webdavUrl', type: 'string', default: '', label: 'WebDAV 地址', description: '如 https://dav.example.com/remote.php/dav/files/me/', placeholder: 'https://…' },
+      { key: 'backup.webdavUsername', type: 'string', default: '', label: 'WebDAV 用户名', description: '密码请在 Secret 中配置（WEBDAV_PASSWORD）。' },
+      { key: 'backup.webdavPath', type: 'string', default: 'youlin', label: 'WebDAV 目录', description: '相对于地址的子目录，留空即用地址本身。' },
+    ],
+  },
+  {
     key: 'security',
     label: '安全',
     description: '会话与登录保护（部署级密钥在 wrangler secrets，不在此处）。',
