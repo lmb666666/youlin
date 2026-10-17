@@ -79,7 +79,9 @@ docker compose up -d      # 默认拉取 ghcr.io/lmb666666/youlin:latest
 
 打开 `http://<服务器>:8787/admin` 登录。数据在命名卷 `youlin_youlin-data`（容器内 `/data/youlin.db`），首次启动自动建表，重启和升级都不丢数据。镜像同时提供 amd64 与 arm64，NAS、ARM 小主机也能跑。
 
-想自己构建镜像：把 `compose.yaml` 里的 `image:` 换成 `build: .`，然后 `docker compose up -d --build`。\n\n镜像名对应本仓库的 GHCR。如果你 fork 了项目，自己的 Docker workflow 会把镜像推到 `ghcr.io/<你的用户名>/youlin`，把 compose 里的 `image` 改成那个即可。
+想自己构建镜像：把 `compose.yaml` 里的 `image:` 换成 `build: .`，然后 `docker compose up -d --build`。
+
+镜像名对应本仓库的 GHCR。如果你 fork 了项目，自己的 Docker workflow 会把镜像推到 `ghcr.io/<你的用户名>/youlin`，把 compose 里的 `image` 改成那个即可。
 
 ### 2. 环境变量
 

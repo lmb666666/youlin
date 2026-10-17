@@ -204,13 +204,24 @@ export async function collectBackup(db: Env['DB'], env: Env, opts: CollectOption
 
   const settings = await loadFlatSettings(db, env)
 
+  const groupItems: BackupData['groups'] = groupsRows.results.map((g) => {
+    const item: BackupData['groups'][number] = { name: g.name, sort: g.sort }
+    const desc = str(g.desc)
+    if (desc) item.desc = desc
+    return item
+  })
+
+  // 兜底：若库里有游离友链（分组缺失），补一个占位分组，保证备份一定能恢复
+  const groupNames = new Set(groupItems.map((g) => g.name))
+  for (const f of friends) {
+    if (!groupNames.has(f.group)) {
+      groupNames.add(f.group)
+      groupItems.push({ name: f.group, sort: Number.MAX_SAFE_INTEGER })
+    }
+  }
+
   const data: BackupData = {
-    groups: groupsRows.results.map((g) => {
-      const item: BackupData['groups'][number] = { name: g.name, sort: g.sort }
-      const desc = str(g.desc)
-      if (desc) item.desc = desc
-      return item
-    }),
+    groups: groupItems,
     friends,
     applications,
     settings: settings as Record<string, unknown>,

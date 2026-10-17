@@ -279,6 +279,61 @@ describe('备份校验', () => {
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('broken_reference')
   })
 
+  it('备份内重复友链直接拒绝', async () => {
+    const dup = {
+      format: 'youlin.backup',
+      version: 1,
+      exportedAt: '2026-01-01T00:00:00Z',
+      data: {
+        groups: [{ name: 'G', sort: 0 }],
+        friends: [
+          { group: 'G', author: '甲', link: 'https://dup.example.com/', since: '2024-01-01', inCircle: true, status: 'active', sort: 0 },
+          { group: 'G', author: '乙', link: 'https://dup.example.com/', since: '2024-01-01', inCircle: true, status: 'active', sort: 1 },
+        ],
+        applications: [],
+        settings: {},
+      },
+    }
+    const res = await postBackup('/api/admin/backup/restore?confirm=1&downloaded=1', JSON.stringify(dup))
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('duplicate_link')
+  })
+
+  it('未知或非法设置键跳过，不影响恢复', async () => {
+    const messy = {
+      format: 'youlin.backup',
+      version: 1,
+      exportedAt: '2026-01-01T00:00:00Z',
+      data: {
+        groups: [{ name: 'G', sort: 0 }],
+        friends: [{ group: 'G', author: '甲', link: 'https://ok.example.com/', since: '2024-01-01', inCircle: true, status: 'active', sort: 0 }],
+        applications: [],
+        settings: { 'site.name': '新名字', 'unknown.key': 1, 'ui.pageSize': 'not-a-number' },
+      },
+    }
+    const res = await postBackup('/api/admin/backup/restore?confirm=1&downloaded=1', JSON.stringify(messy))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { summary: { settings: number; settingsSkipped: number } }
+    expect(body.summary).toMatchObject({ settings: 1, settingsSkipped: 2 })
+    const settings = await (await authed('/api/admin/settings')).json() as { values: Record<string, unknown> }
+    expect(settings.values['site.name']).toBe('新名字')
+    expect(settings.values['ui.pageSize']).toBe(20)
+  })
+
+  it('空备份可以恢复（清空数据），便于重置实例', async () => {
+    await seed()
+    const empty = {
+      format: 'youlin.backup',
+      version: 1,
+      exportedAt: '2026-01-01T00:00:00Z',
+      data: { groups: [], friends: [], applications: [], settings: {} },
+    }
+    const res = await postBackup('/api/admin/backup/restore?confirm=1&downloaded=1', JSON.stringify(empty))
+    expect(res.status).toBe(200)
+    const pub = await (await SELF.fetch(BASE + '/api/links')).json() as { groups: unknown[] }
+    expect(pub.groups).toEqual([])
+  })
+
   it('更高版本的备份给出升级提示', async () => {
     const future = {
       format: 'youlin.backup',
