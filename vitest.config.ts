@@ -11,6 +11,7 @@ export default defineConfig(async () => ({
           ADMIN_TOKEN: 'test-admin-token',
           TURNSTILE_SECRET: 'test-turnstile-secret',
           GITHUB_PAT: 'test-github-pat',
+          WEBDAV_PASSWORD: 'davpass',
           TEST_MIGRATIONS: await readD1Migrations(path.join(import.meta.dirname, 'migrations')),
         },
       },

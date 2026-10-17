@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { ArchiveRestore, CloudUpload, Download, HardDriveDownload, History, ShieldAlert, Upload } from 'lucide-react'
+import { ArchiveRestore, CloudDownload, CloudUpload, Download, HardDriveDownload, History, PlugZap, RefreshCw, ShieldAlert, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -35,20 +35,28 @@ interface PreviewSummary {
   includeArticles: boolean
 }
 
+interface DavFile {
+  name: string
+  size: number
+  lastModified?: string
+}
+
+async function readError(res: Response): Promise<string> {
+  let message = `请求失败（${res.status}）`
+  try {
+    const body = (await res.json()) as { error?: { message?: string } }
+    if (body.error?.message) message = body.error.message
+  } catch { /* 保持默认文案 */ }
+  return message
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
   if (res.status === 401) {
     window.location.assign('/admin/login')
     throw new Error('未登录')
   }
-  if (!res.ok) {
-    let message = `请求失败（${res.status}）`
-    try {
-      const body = (await res.json()) as { error?: { message?: string } }
-      if (body.error?.message) message = body.error.message
-    } catch { /* 保持默认文案 */ }
-    throw new Error(message)
-  }
+  if (!res.ok) throw new Error(await readError(res))
   return (await res.json()) as T
 }
 
@@ -64,6 +72,14 @@ function fmtTime(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
 }
 
+/** youlin-backup-20261017-140500.json.gz → 2026-10-17 14:05:00 */
+function fmtBackupName(name: string): string {
+  const m = /^(youlin-backup|pre-restore)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.json\.gz$/.exec(name)
+  if (!m) return name
+  const kind = m[1] === 'pre-restore' ? '恢复前存档' : '备份'
+  return `${kind} · ${m[2]}-${m[3]}-${m[4]} ${m[5]}:${m[6]}:${m[7]}`
+}
+
 const TARGET_LABEL = { download: '下载', webdav: 'WebDAV', 'pre-restore': '恢复前存档' } as const
 
 export default function BackupPage() {
@@ -75,6 +91,9 @@ export default function BackupPage() {
   const [preview, setPreview] = useState<PreviewSummary | null>(null)
   const [ack, setAck] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [davFiles, setDavFiles] = useState<DavFile[] | null>(null)
+  const [davError, setDavError] = useState<string | null>(null)
+  const [cloudTarget, setCloudTarget] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const loadStatus = useCallback(async () => {
@@ -87,23 +106,31 @@ export default function BackupPage() {
     }
   }, [])
 
+  const loadDav = useCallback(async () => {
+    setDavError(null)
+    try {
+      const res = await requestJson<{ files: DavFile[] }>('/api/admin/backup/webdav/list')
+      setDavFiles(res.files)
+    } catch (err) {
+      setDavFiles(null)
+      setDavError(err instanceof Error ? err.message : '读取 WebDAV 失败')
+    }
+  }, [])
+
   useEffect(() => {
     void loadStatus()
   }, [loadStatus])
+
+  useEffect(() => {
+    if (status?.webdav.configured) void loadDav()
+  }, [status?.webdav.configured, loadDav])
 
   async function download() {
     if (busy) return
     setBusy('download')
     try {
       const res = await fetch(`/api/admin/backup/export?articles=${includeArticles ? 1 : 0}`)
-      if (!res.ok) {
-        let message = `备份失败（${res.status}）`
-        try {
-          const body = (await res.json()) as { error?: { message?: string } }
-          if (body.error?.message) message = body.error.message
-        } catch { /* 保持默认文案 */ }
-        throw new Error(message)
-      }
+      if (!res.ok) throw new Error(await readError(res))
       const blob = await res.blob()
       const cd = res.headers.get('content-disposition') ?? ''
       const name = /filename="([^"]+)"/.exec(cd)?.[1] ?? 'youlin-backup.json.gz'
@@ -117,6 +144,59 @@ export default function BackupPage() {
       void loadStatus()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '备份失败')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function testDav() {
+    if (busy) return
+    setBusy('dav-test')
+    try {
+      const res = await requestJson<{ ok: boolean; files: number }>('/api/admin/backup/webdav/test', { method: 'POST' })
+      toast.success(`连接正常，目录中已有 ${res.files} 份备份`)
+      void loadDav()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '连接失败')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function runDav() {
+    if (busy) return
+    setBusy('dav-run')
+    try {
+      const res = await requestJson<{ ok: boolean; status: { file: string; bytes?: number }; pruned: number }>(
+        '/api/admin/backup/webdav/run',
+        { method: 'POST' },
+      )
+      toast.success(`已上传 ${res.status.file}（${fmtBytes(res.status.bytes)}${res.pruned > 0 ? `，清理 ${res.pruned} 份旧备份` : ''}）`)
+      void loadStatus()
+      void loadDav()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '上传失败')
+      void loadStatus()
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function restoreFromCloud(name: string) {
+    if (busy) return
+    setBusy('dav-restore')
+    setCloudTarget(null)
+    try {
+      const res = await requestJson<{ ok: boolean; summary: { groups: number; friends: number; applications: number; settings: number }; preRestoreFile: string | null }>(
+        '/api/admin/backup/webdav/restore?confirm=1',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) },
+      )
+      const s = res.summary
+      toast.success(`恢复完成：${s.groups} 个分组、${s.friends} 条友链、${s.applications} 条申请、${s.settings} 项设置`)
+      refreshSettings()
+      window.setTimeout(() => window.location.reload(), 900)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '恢复失败')
     } finally {
       setBusy(null)
     }
@@ -160,7 +240,9 @@ export default function BackupPage() {
     if (!file || busy) return
     setBusy('restore')
     try {
-      const res = await fetch(`/api/admin/backup/restore?confirm=1${ack ? '&downloaded=1' : ''}`, {
+      const params = new URLSearchParams({ confirm: '1' })
+      if (!status?.webdav.configured) params.set('downloaded', ack ? '1' : '0')
+      const res = await fetch(`/api/admin/backup/restore?${params}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' },
         body: file,
@@ -192,6 +274,7 @@ export default function BackupPage() {
   }
 
   const canRestore = Boolean(file && preview && ack && !busy)
+  const davConfigured = status?.webdav.configured ?? false
 
   return (
     <div className="mx-auto grid w-full max-w-3xl gap-4 [&>*]:min-w-0">
@@ -242,22 +325,73 @@ export default function BackupPage() {
           </CardTitle>
           <CardDescription>地址、用户名与周期在设置页配置；密码写在 Secret（WEBDAV_PASSWORD）。</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-2 text-sm">
-          {status ? (
-            status.webdav.configured ? (
+        <CardContent className="grid gap-3 text-sm">
+          {!status ? (
+            <p className="text-muted-foreground">读取中…</p>
+          ) : davConfigured ? (
+            <>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">已配置</Badge>
-                <span className="break-all text-muted-foreground">{status.webdav.url}{status.webdav.path ? ` · ${status.webdav.path}` : ''}</span>
+                <span className="break-all text-xs text-muted-foreground">{status.webdav.url}{status.webdav.path ? ` · ${status.webdav.path}` : ''}</span>
               </div>
-            ) : (
-              <p className="text-muted-foreground">尚未配置。到设置页填写 WebDAV 地址与用户名，并设置 WEBDAV_PASSWORD。</p>
-            )
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => void testDav()} disabled={busy !== null}>
+                  <PlugZap /> {busy === 'dav-test' ? '检测中…' : '测试连接'}
+                </Button>
+                <Button onClick={() => void runDav()} disabled={busy !== null}>
+                  <CloudUpload /> {busy === 'dav-run' ? '上传中…' : '立即备份到 WebDAV'}
+                </Button>
+                <Button variant="ghost" onClick={() => void loadDav()} disabled={busy !== null}>
+                  <RefreshCw /> 刷新列表
+                </Button>
+              </div>
+              {davError && <p className="text-xs text-destructive">{davError}</p>}
+              {davFiles && davFiles.length > 0 && (
+                <div className="grid gap-1 rounded-md border p-2">
+                  {davFiles.map((f) => (
+                    <div key={f.name} className="flex flex-wrap items-center justify-between gap-2 rounded px-1 py-1 text-xs">
+                      <span className="min-w-0 truncate">{fmtBackupName(f.name)}</span>
+                      <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+                        {fmtBytes(f.size)}
+                        <AlertDialog open={cloudTarget === f.name} onOpenChange={(o) => setCloudTarget(o ? f.name : null)}>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="outline" size="sm" disabled={busy !== null}>
+                              <CloudDownload /> 恢复
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>从这个云端备份恢复？</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                会先把当前数据自动存档一份到 WebDAV，再清空并写入 {fmtBackupName(f.name)}。
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>取消</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive text-white hover:bg-destructive/90"
+                                onClick={() => void restoreFromCloud(f.name)}
+                                disabled={busy !== null}
+                              >
+                                {busy === 'dav-restore' ? '恢复中…' : '确认恢复'}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {davFiles && davFiles.length === 0 && <p className="text-xs text-muted-foreground">云端还没有备份文件。</p>}
+            </>
           ) : (
-            <p className="text-muted-foreground">读取中…</p>
+            <p className="text-muted-foreground">尚未配置。到设置页填写 WebDAV 地址与用户名，并设置 WEBDAV_PASSWORD。</p>
           )}
           <Separator className="my-1" />
           <p className="text-xs text-muted-foreground">
-            自动备份与云端恢复在开启 WebDAV 后可用；同一目录保留最近 {status?.backup.retain ?? 7} 份。
+            自动备份与云端恢复在开启 WebDAV 后可用；同一目录保留最近 {status?.backup.retain ?? 7} 份，
+            恢复前存档不会被自动清理。
           </p>
         </CardContent>
       </Card>
@@ -291,7 +425,7 @@ export default function BackupPage() {
                 导出于 {fmtTime(preview.exportedAt)}
                 {preview.appVersion ? ` · 来源版本 ${preview.appVersion}` : ''}
               </p>
-              {!status?.webdav.configured && (
+              {!davConfigured && (
                 <div className="flex items-start gap-2 rounded-md bg-destructive/10 p-2 text-xs">
                   <ShieldAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
                   <span>未配置 WebDAV，恢复前请先下载当前数据。下方勾选后才能继续。</span>
@@ -304,7 +438,9 @@ export default function BackupPage() {
                   checked={ack}
                   onChange={(e) => setAck(e.target.checked)}
                 />
-                我已保存当前数据，确认用这个文件覆盖现有内容
+                {davConfigured
+                  ? `确认覆盖现有内容（当前数据会先自动存档到 WebDAV）`
+                  : '我已保存当前数据，确认用这个文件覆盖现有内容'}
               </label>
               <div className="flex justify-end">
                 <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>

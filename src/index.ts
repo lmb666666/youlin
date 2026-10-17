@@ -6,7 +6,7 @@ import { publicRoutes } from './routes/links'
 import { publicCircleRoute } from './routes/circle'
 import { applyRoutes } from './routes/apply'
 import { adminRoutes } from './routes/admin'
-import { runCronTick } from './crawler/crawl'
+import { runScheduledJobs } from './jobs'
 
 const app = new Hono<AppEnv>()
 
@@ -54,8 +54,8 @@ export default {
     ctx.waitUntil(
       (async () => {
         const { cfg } = await loadConfig(env.DB, env)
-        const summary = await runCronTick(env.DB, env, cfg)
-        console.log('[cron] tick:', JSON.stringify(summary))
+        const summary = await runScheduledJobs(env.DB, env, cfg)
+        console.log('[cron] tick:', JSON.stringify({ crawl: summary.crawl, backup: summary.backup?.status ?? null }))
       })(),
     )
   },
