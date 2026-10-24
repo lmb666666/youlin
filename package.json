@@ -1,6 +1,6 @@
 {
   "name": "youlin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "友邻 Youlin — Neighbors of your blog. 友链 + 朋友圈管理台，跑在 Cloudflare Workers 上。",
   "license": "MIT",
