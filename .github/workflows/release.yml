@@ -30,6 +30,9 @@ jobs:
       - name: 校验标签与 package.json 版本一致
         run: test "${GITHUB_REF_NAME}" = "v$(node -p "require('./package.json').version")"
 
+      - name: 校验三处版本号一致（package.json / web / src/version.ts）
+        run: node scripts/check-version.mjs
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

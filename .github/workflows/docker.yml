@@ -35,6 +35,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: 校验三处版本号一致（package.json / web / src/version.ts）
+        run: node scripts/check-version.mjs
+
+      - name: 校验标签与版本一致（仅 tag 触发）
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./package.json').version")"
+
       - uses: docker/setup-buildx-action@v3
 
       - name: 登录 GHCR

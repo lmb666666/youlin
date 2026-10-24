@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# 只读 checkout，不需要任何写权限
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
