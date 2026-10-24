@@ -141,23 +141,31 @@ export function importRoutes() {
 
     const createdGroups = new Set<string>()
 
-    // 分组：一次读全量组表，缺的一次 batch 补齐
+    // 分组：一次读全量组表，缺的一次 batch 补齐（OR IGNORE 兜住并发创建的 groups.name 唯一索引）
     const names = [...new Set(items.map((it) => it.group ?? '未分组'))]
     const existingGroups = await c.env.DB.prepare('SELECT id, name FROM groups').all<{ id: number; name: string }>()
     const groupIdByName = new Map(existingGroups.results.map((g) => [g.name, g.id]))
     const missing = names.filter((n) => !groupIdByName.has(n))
     if (missing.length > 0) {
       const nextSort = existingGroups.results.length
-      const results = await c.env.DB.batch(
+      await c.env.DB.batch(
         missing.map((name, i) =>
-          c.env.DB.prepare('INSERT INTO groups (name, sort) VALUES (?, ?)').bind(name, nextSort + i),
+          c.env.DB.prepare('INSERT OR IGNORE INTO groups (name, sort) VALUES (?, ?)').bind(name, nextSort + i),
         ),
       )
-      for (let i = 0; i < missing.length; i++) {
-        const id = Number(results[i]?.meta.last_row_id)
-        if (!id) return jsonError(500, 'group_create_failed', `分组「${missing[i]}」创建失败`)
-        groupIdByName.set(missing[i]!, id)
-        createdGroups.add(missing[i]!)
+      // 回查实际行（并发下部分 INSERT 可能被唯一索引忽略）
+      const created = await c.env.DB.prepare(
+        `SELECT id, name FROM groups WHERE name IN (${missing.map(() => '?').join(',')})`,
+      )
+        .bind(...missing)
+        .all<{ id: number; name: string }>()
+      for (const g of created.results) {
+        groupIdByName.set(g.name, g.id)
+        createdGroups.add(g.name)
+      }
+      const failed = missing.filter((n) => !groupIdByName.has(n))
+      if (failed.length > 0) {
+        return jsonError(500, 'group_create_failed', `分组「${failed[0]}」创建失败`)
       }
     }
 

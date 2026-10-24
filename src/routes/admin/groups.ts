@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { jsonError, fieldDetails, readJson } from '../../util/http'
+import { jsonError, fieldDetails, readJson, isUniqueConstraintError } from '../../util/http'
 import type { AppEnv } from '../../types'
 
 export function groupRoutes() {
@@ -44,10 +44,16 @@ export function groupRoutes() {
       parsed.data.sort ??
       ((await c.env.DB.prepare('SELECT COALESCE(MAX(sort), -1) + 1 AS next FROM groups').first<{ next: number }>())
         ?.next ?? 0)
-    const res = await c.env.DB.prepare('INSERT INTO groups (name, "desc", sort) VALUES (?, ?, ?)')
-      .bind(name, desc ?? null, sort)
-      .run()
-    return c.json({ id: res.meta.last_row_id }, 201)
+    try {
+      const res = await c.env.DB.prepare('INSERT INTO groups (name, "desc", sort) VALUES (?, ?, ?)')
+        .bind(name, desc ?? null, sort)
+        .run()
+      return c.json({ id: res.meta.last_row_id }, 201)
+    } catch (e) {
+      // 并发创建撞 groups.name 唯一索引（0003），check-then-insert 的竞态兜底
+      if (!isUniqueConstraintError(e)) throw e
+      return jsonError(409, 'duplicate_name', '同名分组已存在')
+    }
   })
 
   app.patch('/api/admin/groups/:id', async (c) => {
@@ -80,7 +86,12 @@ export function groupRoutes() {
     }
     if (sets.length > 0) {
       binds.push(id)
-      await c.env.DB.prepare(`UPDATE groups SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
+      try {
+        await c.env.DB.prepare(`UPDATE groups SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run()
+      } catch (e) {
+        if (!isUniqueConstraintError(e)) throw e
+        return jsonError(409, 'duplicate_name', '同名分组已存在')
+      }
     }
     return c.json({ ok: true })
   })
