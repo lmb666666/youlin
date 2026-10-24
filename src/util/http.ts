@@ -19,6 +19,12 @@ export function isMissingTableError(message: string): boolean {
   return /no such table|no such column/i.test(message)
 }
 
+/** 唯一索引冲突（check-then-act 竞态的兜底信号） */
+export function isUniqueConstraintError(e: unknown): boolean {
+  const message = e instanceof Error ? e.message : String(e)
+  return /UNIQUE constraint failed/i.test(message)
+}
+
 /** 解析请求体 JSON；失败返回 undefined 并已写响应 */
 export async function readJson(c: Context): Promise<unknown | undefined> {
   try {

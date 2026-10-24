@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { jsonError, readJson } from '../../util/http'
 import { isoUtc, dateOnly } from '../../util/time'
+import { httpUrl } from '../../util/validate'
 import { triggerRebuild } from '../../rebuild'
 import { ensureGroupByName } from '../apply'
 import type { AppEnv } from '../../types'
@@ -63,8 +64,9 @@ const approveSchema = z
     author: z.string().max(100).optional(),
     title: z.string().max(200).optional(),
     desc: z.string().max(2000).optional(),
-    feed: z.union([z.string().url().max(2048), z.literal('')]).optional(),
-    avatar: z.union([z.string().url().max(2048), z.literal('')]).optional(),
+    // 与 friends 表单同一校验口径（httpUrl），放行 javascript: 等任意 scheme 会流入公开接口
+    feed: z.union([httpUrl, z.literal('')]).optional(),
+    avatar: z.union([httpUrl, z.literal('')]).optional(),
     since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     rebuild: z.boolean().optional(),
   })
@@ -107,11 +109,13 @@ export function applicationRoutes() {
     if (!groupExists) return jsonError(400, 'unknown_group', '分组不存在')
 
     const cfg = c.get('cfg')
-    const res = await c.env.DB.prepare(
-      `INSERT INTO friends (group_id, author, title, "desc", link, feed, avatar, since, in_circle, comment)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
-    )
-      .bind(
+    const nowDb = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    // 建友链与状态翻转放进同一个 batch（原子）：中途失败不会出现「友链已建、申请仍 pending」
+    const results = await c.env.DB.batch([
+      c.env.DB.prepare(
+        `INSERT INTO friends (group_id, author, title, "desc", link, feed, avatar, since, in_circle, comment)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      ).bind(
         groupId,
         overrides.author ?? app_.author ?? app_.site_name,
         overrides.title ?? app_.site_name,
@@ -121,14 +125,15 @@ export function applicationRoutes() {
         overrides.avatar === '' ? null : (overrides.avatar ?? app_.avatar),
         overrides.since ?? dateOnly(new Date())!,
         app_.note,
-      )
-      .run()
-    const friendId = Number(res.meta.last_row_id)
-
-    const nowDb = new Date().toISOString().slice(0, 19).replace('T', ' ')
-    await c.env.DB.prepare('UPDATE applications SET status = ?, review_note = ?, reviewed_at = ? WHERE id = ?')
-      .bind('approved', `通过（友链 #${friendId}）`, nowDb, id)
-      .run()
+      ),
+      c.env.DB.prepare(
+        `UPDATE applications SET status = 'approved',
+                review_note = '通过（友链 #' || (SELECT id FROM friends WHERE link = ? ORDER BY id DESC LIMIT 1) || '）',
+                reviewed_at = ?
+          WHERE id = ?`,
+      ).bind(app_.link, nowDb, id),
+    ])
+    const friendId = Number(results[0]?.meta.last_row_id)
 
     // 通过后可选触发接入方重建（显式请求或 rebuild.auto + enabled）
     let rebuild: { triggered: boolean; provider?: string; debounced?: boolean; error?: string } | null = null

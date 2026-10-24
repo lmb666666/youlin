@@ -57,7 +57,8 @@ export async function loadFlatSettings(db: Env['DB'], env: Env): Promise<FlatSet
   const rows = await db.prepare('SELECT key, value FROM settings').all<{ key: string; value: string }>()
   const stored: FlatSettings = {}
   for (const row of rows.results) {
-    if (row.key.startsWith('internal.')) continue // 运行时簿记（轮转进度等），不属于应用配置
+    // internal.* 是运行时簿记（轮转进度等），settings.* 是表自身的版本号，都不属于应用配置
+    if (row.key.startsWith('internal.') || row.key.startsWith('settings.')) continue
     try {
       stored[row.key] = JSON.parse(row.value)
     } catch {
@@ -72,8 +73,6 @@ export async function loadFlatSettings(db: Env['DB'], env: Env): Promise<FlatSet
     merged = { ...merged, ...sanitize(overrides, 'YOULIN_CONFIG_OVERRIDES') }
   }
 
-  // settings 自身的版本号不属于 AppConfig，剔除
-  delete merged['settings.schemaVersion']
   return merged
 }
 

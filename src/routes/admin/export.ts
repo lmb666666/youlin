@@ -34,7 +34,9 @@ function xmlEsc(s: string): string {
 
 function csvEsc(v: unknown): string {
   const s = v === null || v === undefined ? '' : String(v)
-  return `"${s.replaceAll('"', '""')}"`
+  // 公式注入防护：Excel/WPS 会把 =+-@ 开头的单元格当公式执行（字段含公开申请提交的内容）
+  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s
+  return `"${safe.replaceAll('"', '""')}"`
 }
 
 function parseArchs(raw: string | null): string[] {
