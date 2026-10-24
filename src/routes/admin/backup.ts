@@ -220,10 +220,10 @@ export function backupRoutes() {
     const decoded = await decodeBackup(bytes)
     if (!decoded.ok) return decoded.response
 
-    // 云端恢复同样先存档一份，再去覆盖
+    // 云端恢复同样先存档一份再去覆盖；存档恒含文章（理由同文件恢复）
     const pre = await runWebdavBackup(c.env.DB, c.env, cfg, {
       target: 'pre-restore',
-      includeArticles: decoded.envelope.data.articles !== undefined,
+      includeArticles: true,
     })
     if (!pre.ok) {
       return jsonError(502, 'prebackup_failed', `恢复前的自动存档失败：${pre.error ?? '未知错误'}`)

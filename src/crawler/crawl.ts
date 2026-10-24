@@ -229,18 +229,21 @@ async function crawlRss(
     .sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : -1))
 
   if (friend.in_circle === 1) {
-    await db.batch(
-      valid.slice(0, cfg.crawl.maxPerFriend).map((e) =>
-        db
-          .prepare(
-            `INSERT INTO articles (friend_id, guid, title, link, author, published_at)
-             VALUES (?, ?, ?, ?, ?, ?)
-             ON CONFLICT(friend_id, guid) DO UPDATE SET
-               title = excluded.title, link = excluded.link, author = excluded.author, published_at = excluded.published_at`,
-          )
-          .bind(friend.id, e.guid, e.title, e.link, e.author, e.publishedAt),
-      ),
-    )
+    const keep = valid.slice(0, cfg.crawl.maxPerFriend)
+    if (keep.length > 0) {
+      await db.batch(
+        keep.map((e) =>
+          db
+            .prepare(
+              `INSERT INTO articles (friend_id, guid, title, link, author, published_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(friend_id, guid) DO UPDATE SET
+                 title = excluded.title, link = excluded.link, author = excluded.author, published_at = excluded.published_at`,
+            )
+            .bind(friend.id, e.guid, e.title, e.link, e.author, e.publishedAt),
+        ),
+      )
+    }
     await db
       .prepare(
         `DELETE FROM articles WHERE friend_id = ? AND id NOT IN (

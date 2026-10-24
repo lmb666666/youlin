@@ -99,7 +99,11 @@ export async function fetchRemote(env: Env, opts: FetchOptions): Promise<FetchRe
     try {
       let current = url
       for (let hop = 0; ; hop++) {
-        if (isPrivateTarget(current)) return fail('目标地址不可抓取（内网或非 http(s) 地址）')
+        // 首跳走代理时不校验：代理地址是运维配置（常见为本机 127.0.0.1 的代理），
+        // 只校验入口处的抓取目标；重定向后的目标一律直连，必须复检
+        if ((hop > 0 || !viaProxy) && isPrivateTarget(current)) {
+          return fail('目标地址不可抓取（内网或非 http(s) 地址）')
+        }
         const res = await fetch(current, {
           method: 'GET',
           redirect: 'manual',
