@@ -77,7 +77,9 @@ cp .env.example .env      # 填 ADMIN_TOKEN（openssl rand -hex 32）
 docker compose up -d      # 默认拉取 ghcr.io/lmb666666/youlin:latest
 ```
 
-打开 `http://<服务器>:8787/admin` 登录。数据在命名卷 `youlin_youlin-data`（容器内 `/data/youlin.db`），首次启动自动建表，重启和升级都不丢数据。镜像同时提供 amd64 与 arm64，NAS、ARM 小主机也能跑。
+打开 `http://127.0.0.1:8787/admin` 登录（端口默认只绑回环，公网访问交给下一步的反代）。数据在命名卷 `youlin_youlin-data`（容器内 `/data/youlin.db`），首次启动自动建表，重启和升级都不丢数据。镜像同时提供 amd64 与 arm64，NAS、ARM 小主机也能跑。
+
+不经反代直接对外提供服务的话，把 compose 的 `ports` 改成 `"8787:8787"`——但那是明文 HTTP，口令会裸传，不建议长期使用。
 
 想自己构建镜像：把 `compose.yaml` 里的 `image:` 换成 `build: .`，然后 `docker compose up -d --build`。
 
@@ -109,9 +111,11 @@ links.example.com {
 }
 ```
 
-同时把 compose 的端口改成只绑本机：`ports: ["127.0.0.1:8787:8787"]`，只让反代访问。
+compose 的端口默认就只绑本机（`127.0.0.1:8787:8787`），只让反代访问。
 
 用 Nginx 的话，转发到 `127.0.0.1:8787` 并开启 gzip；记得带上 `proxy_set_header Host $host` 和 `proxy_set_header X-Forwarded-Proto $scheme`——会话 Cookie 会根据它决定是否加 `Secure`。
+
+反代场景下限流按 `X-Forwarded-For` 的最后一档识别真实来源 IP（由可信代理追加）；直连场景直接取 socket 地址，伪造头无效。
 
 ### 4. 升级
 

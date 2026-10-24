@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser'
+import { clampText } from '../util/str'
 
 /**
  * RSS 2.0 / Atom 1.0（兼容 RSS 1.0 RDF）解析（DESIGN §6 语义）：
@@ -6,6 +7,7 @@ import { XMLParser } from 'fast-xml-parser'
  *  - 坏条目跳过（无 title/link）
  *  - guid 缺失时用 link 的 sha1
  *  - 时间一律归一 ISO 8601 UTC
+ *  - link 以 feed 地址为基准归一为绝对地址；字段长度对齐备份恢复 schema 的上限
  */
 
 export interface ParsedEntry {
@@ -20,6 +22,9 @@ export interface ParsedFeed {
   title: string | null
   entries: ParsedEntry[]
 }
+
+/** 文章字段的入库上限（backup/restore 的 backupArticle 同源，保证能导出的必能导回） */
+const LIMITS = { guid: 2000, title: 500, link: 2048, author: 200 } as const
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -74,8 +79,21 @@ function entryAuthor(v: unknown): string | null {
   return text(v)
 }
 
+/** 相对链接以 feed 地址为基准归一；超长或解析不出绝对地址的按缺失处理 */
+function absoluteLink(u: string | null, base: string | undefined): string | null {
+  if (!u) return null
+  if (/^https?:\/\//i.test(u)) return u.length <= LIMITS.link ? u : null
+  if (!base) return null
+  try {
+    const abs = new URL(u, base).toString()
+    return /^https?:\/\//i.test(abs) && abs.length <= LIMITS.link ? abs : null
+  } catch {
+    return null
+  }
+}
+
 /** 解析失败抛错（调用方决定记为不可抓取）；单条坏数据跳过不抛 */
-export async function parseFeed(xml: string): Promise<ParsedFeed> {
+export async function parseFeed(xml: string, baseUrl?: string): Promise<ParsedFeed> {
   let doc: Record<string, unknown>
   try {
     doc = parser.parse(xml) as Record<string, unknown>
@@ -89,7 +107,7 @@ export async function parseFeed(xml: string): Promise<ParsedFeed> {
     const rawEntries = toArray(atom.entry)
     const entries: ParsedEntry[] = []
     for (const raw of rawEntries) {
-      const e = normalizeAtomEntry(raw)
+      const e = normalizeAtomEntry(raw, baseUrl)
       if (e) entries.push(e)
     }
     return { title: text(atom.title), entries }
@@ -103,7 +121,7 @@ export async function parseFeed(xml: string): Promise<ParsedFeed> {
     const rawItems = toArray(channel.item)
     const entries: ParsedEntry[] = []
     for (const raw of rawItems) {
-      const e = normalizeRssItem(raw)
+      const e = normalizeRssItem(raw, baseUrl)
       if (e) entries.push(e)
     }
     return { title: text(channel.title), entries }
@@ -118,35 +136,38 @@ function toArray(v: unknown): Record<string, unknown>[] {
   return list.filter((x): x is Record<string, unknown> => x !== null && typeof x === 'object')
 }
 
-function normalizeAtomEntry(raw: unknown): ParsedEntry | null {
+function normalizeAtomEntry(raw: unknown, baseUrl?: string): ParsedEntry | null {
   const e = raw as Record<string, unknown>
-  const title = text(e.title)
-  const link = atomLink(e.link)
+  const title = clampText(text(e.title), LIMITS.title)
+  const link = absoluteLink(atomLink(e.link), baseUrl)
   if (!title || !link) return null
   const publishedAt = toIso(e.published) ?? toIso(e.updated) ?? toIso(e.issued)
   if (!publishedAt) return null
-  const id = text(e.id)
+  const id = clampText(text(e.id), LIMITS.guid)
   return {
     guid: id ?? '', // 由调用方用 sha1(link) 兜底
     title,
     link,
-    author: entryAuthor(e.author),
+    author: clampText(entryAuthor(e.author), LIMITS.author),
     publishedAt,
   }
 }
 
-function normalizeRssItem(raw: unknown): ParsedEntry | null {
+function normalizeRssItem(raw: unknown, baseUrl?: string): ParsedEntry | null {
   const e = raw as Record<string, unknown>
-  const title = text(e.title)
+  const title = clampText(text(e.title), LIMITS.title)
   // guid 兜底仅在它本身是 http(s) 链接时才用（否则会把 "tag:…" 之类写进 link，破坏契约）
-  const guidText = text(e.guid)
-  const link = text(e.link) ?? atomLink(e['atom:link']) ?? (guidText && /^https?:\/\//.test(guidText) ? guidText : null)
+  const guidText = clampText(text(e.guid), LIMITS.guid)
+  const link = absoluteLink(
+    text(e.link) ?? atomLink(e['atom:link']) ?? (guidText && /^https?:\/\//.test(guidText) ? guidText : null),
+    baseUrl,
+  )
   if (!title || !link) return null
   // RSS 时间字段各家写法不一：pubDate / dc:date / published / updated
   const publishedAt =
     toIso(e.pubDate) ?? toIso(e['dc:date']) ?? toIso(e.published) ?? toIso(e.updated) ?? toIso(e['atom:updated'])
   if (!publishedAt) return null
-  const author = entryAuthor(e['dc:creator']) ?? entryAuthor(e.author)
+  const author = clampText(entryAuthor(e['dc:creator']) ?? entryAuthor(e.author), LIMITS.author)
   return { guid: guidText ?? '', title, link, author, publishedAt }
 }
 

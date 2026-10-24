@@ -2,10 +2,11 @@
 #
 #   1. cp .env.example .env 并填写 ADMIN_TOKEN
 #   2. docker compose up -d
-#   3. 浏览器打开 http://<服务器>:8787/admin/login
+#   3. 浏览器打开 http://127.0.0.1:8787/admin/login
 #
-# 建议在容器前面放 Caddy/Nginx 提供 HTTPS（见 docs/deployment.md），
-# 并把端口的对外暴露交给反代，例如：ports: ["127.0.0.1:8787:8787"]。
+# 端口默认只绑回环：对外访问交给反代（Caddy/Nginx，见 docs/deployment.md），
+# 由它提供 HTTPS 并把流量转给 127.0.0.1:8787。需要不经反代直连时，
+# 把 ports 改成 "8787:8787"（明文 HTTP，不推荐长期使用）。
 
 services:
   youlin:
@@ -15,7 +16,7 @@ services:
     container_name: youlin
     restart: unless-stopped
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8787:8787"
     env_file:
       - .env
     environment:

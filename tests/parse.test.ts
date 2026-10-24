@@ -111,3 +111,33 @@ describe('feed 解析', () => {
     expect(feed.entries[0]!.link).toBe('https://a.example.com/permalink')
   })
 })
+
+describe('相对链接归一与字段截断', () => {
+  const RELATIVE = `<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>
+    <item><title>相对链接</title><link>posts/hello.html</link><pubDate>Mon, 05 Oct 2026 12:00:00 GMT</pubDate></item>
+    <item><title>无基准的相对链接会被丢</title><link>posts/lost.html</link><pubDate>Mon, 05 Oct 2026 11:00:00 GMT</pubDate></item>
+    <item><title>超长链接会被丢</title><link>https://a.example.com/${'x'.repeat(2100)}</link><pubDate>Mon, 05 Oct 2026 10:00:00 GMT</pubDate></item>
+    <item><title>超长标题被截断</title><link>https://a.example.com/long</link><pubDate>Mon, 05 Oct 2026 09:00:00 GMT</pubDate><description>x</description></item>
+  </channel></rss>`
+
+  it('以 feed 地址为基准解析相对链接；无基准或超长的按缺失丢弃', async () => {
+    const withBase = await parseFeed(RELATIVE.replace('posts/lost.html', 'https://a.example.com/lost'), 'https://a.example.com/feed.xml')
+    expect(withBase.entries.map((e) => e.link)).toEqual([
+      'https://a.example.com/posts/hello.html',
+      'https://a.example.com/lost',
+      'https://a.example.com/long',
+    ])
+
+    const noBase = await parseFeed(RELATIVE)
+    // 无基准时相对链接一并丢弃，只剩绝对链接的条目
+    expect(noBase.entries.map((e) => e.title)).toEqual(['超长标题被截断'])
+  })
+
+  it('title 截到备份 schema 上限（500）', async () => {
+    const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>
+      <item><title>${'标'.repeat(600)}</title><link>https://a.example.com/1</link><pubDate>Mon, 05 Oct 2026 12:00:00 GMT</pubDate></item>
+    </channel></rss>`
+    const feed = await parseFeed(xml)
+    expect(feed.entries[0]!.title).toHaveLength(500)
+  })
+})

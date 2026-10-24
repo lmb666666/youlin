@@ -3,6 +3,7 @@ import { parseFeed, withResolvedGuids } from './parse'
 import { extractDeclaredFeeds, commonFeedPaths } from './discover'
 import { fetchRemote, nextIntervalHours } from './http'
 import { daysSince, dbTime } from '../util/time'
+import { clampText } from '../util/str'
 import type { FriendRow } from './crawl'
 
 /**
@@ -46,7 +47,7 @@ export async function checkFriendHealth(env: Env, cfg: AppConfig, friend: Friend
     const res = await fetchRemote(env, { url: friend.feed, cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds })
     if (!res.error && res.status === 200) {
       try {
-        const entries = await withResolvedGuids(await parseFeed(res.body ?? ''))
+        const entries = await withResolvedGuids(await parseFeed(res.body ?? '', res.finalUrl))
         result.reachable = true
         result.crawlable = true
         result.bestMethod = 'rss'
@@ -84,7 +85,7 @@ export async function checkFriendHealth(env: Env, cfg: AppConfig, friend: Friend
       const feedRes = await fetchRemote(env, { url: candidate, cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds })
       if (feedRes.error || feedRes.status !== 200) continue
       try {
-        const entries = await withResolvedGuids(await parseFeed(feedRes.body ?? ''))
+        const entries = await withResolvedGuids(await parseFeed(feedRes.body ?? '', feedRes.finalUrl))
         result.crawlable = true
         result.bestMethod = 'rss'
         result.discoveredFeed = candidate
@@ -217,14 +218,14 @@ export async function persistHealth(
       r.bestMethod,
       r.httpStatus,
       r.latencyMs,
-      r.finalUrl,
+      clampText(r.finalUrl, 2048),
       r.backlinkChecked ? 1 : 0,
       r.backlink === null ? null : r.backlink ? 1 : 0,
       unreachableSince,
       rssUnavailableSince,
       lastPostDb,
       lastPostDays,
-      r.lastError,
+      clampText(r.lastError, 2000),
       failCount,
       `+${base * 60} minutes`,
     )

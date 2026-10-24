@@ -1,7 +1,9 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { AppConfig, AppEnv, Env } from '../types'
-import { jsonError, fieldDetails, readJson } from '../util/http'
+import { jsonError, fieldDetails, readJson, isUniqueConstraintError } from '../util/http'
+import { clientIp } from '../util/ip'
+import { clampText } from '../util/str'
 import { renderApplyPage } from '../apply-page'
 import { fetchRemote } from '../crawler/http'
 import { htmlContainsBacklink, normalizeDomain } from '../crawler/linkcheck'
@@ -51,10 +53,6 @@ function linkVariants(link: string): string[] {
   return [...new Set([link, noSlash, noSlash + '/'])]
 }
 
-function clientIp(c: { req: { header: (k: string) => string | undefined } }): string {
-  return c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? 'local'
-}
-
 async function verifyTurnstile(env: Env, secret: string, token: string, ip: string): Promise<boolean> {
   const form = new FormData()
   form.append('secret', secret)
@@ -85,7 +83,11 @@ async function checkApplicantBacklink(env: Env, cfg: AppConfig, link: string): P
   const ok = htmlContainsBacklink(res.body, mine)
   return {
     ok,
-    detail: ok ? `在 ${res.finalUrl} 发现指向 ${mine} 的链接` : `未在 ${res.finalUrl} 发现指向 ${mine} 的链接`,
+    // applications.backlink_detail 列的上限与备份 schema 一致（finalUrl 最长 2048，拼上文字可能超）
+    detail: clampText(
+      ok ? `在 ${res.finalUrl} 发现指向 ${mine} 的链接` : `未在 ${res.finalUrl} 发现指向 ${mine} 的链接`,
+      2000,
+    ),
   }
 }
 
@@ -94,8 +96,16 @@ export async function ensureGroupByName(db: Env['DB'], name: string): Promise<nu
   const row = await db.prepare('SELECT id FROM groups WHERE name = ?').bind(name).first<{ id: number }>()
   if (row) return row.id
   const next = await db.prepare('SELECT COALESCE(MAX(sort), -1) + 1 AS next FROM groups').first<{ next: number }>()
-  const res = await db.prepare('INSERT INTO groups (name, sort) VALUES (?, ?)').bind(name, next?.next ?? 0).run()
-  return Number(res.meta.last_row_id)
+  try {
+    const res = await db.prepare('INSERT INTO groups (name, sort) VALUES (?, ?)').bind(name, next?.next ?? 0).run()
+    return Number(res.meta.last_row_id)
+  } catch (e) {
+    // 并发创建撞 groups.name 唯一索引（0003）：回查对方刚建好的分组
+    if (!isUniqueConstraintError(e)) throw e
+  }
+  const created = await db.prepare('SELECT id FROM groups WHERE name = ?').bind(name).first<{ id: number }>()
+  if (!created) throw new Error(`分组「${name}」创建失败`)
+  return created.id
 }
 
 export function applyRoutes() {
@@ -214,7 +224,7 @@ export function applyRoutes() {
           nonEmpty(input.author) ? input.author!.trim() : siteName,
           siteName,
           nonEmpty(input.desc) ? input.desc!.trim() : null,
-          input.link,
+          link, // 与去重口径一致（trim 后），避免空白变体绕过唯一索引
           nonEmpty(input.feed) ? input.feed!.trim() : null,
           nonEmpty(input.avatar) ? input.avatar!.trim() : null,
           dateOnly(new Date())!,

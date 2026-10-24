@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { setCookie, deleteCookie } from 'hono/cookie'
 import { SESSION_COOKIE, cookieOptions, verifyAdminToken, loginAllowed, resetLoginHits, signSession } from '../../auth'
 import { jsonError } from '../../util/http'
+import { clientIp } from '../../util/ip'
 import type { AppEnv } from '../../types'
 
 export function loginRoutes() {
@@ -9,7 +10,7 @@ export function loginRoutes() {
 
   app.post('/api/admin/login', async (c) => {
     const cfg = c.get('cfg')
-    const ip = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? 'local'
+    const ip = clientIp(c)
     if (!loginAllowed(ip, cfg.security.loginRateLimit)) {
       return jsonError(429, 'rate_limited', '尝试过于频繁，请一小时后再试')
     }

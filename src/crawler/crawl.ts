@@ -3,6 +3,7 @@ import { parseFeed, withResolvedGuids } from './parse'
 import { fetchRemote, nextIntervalHours, runtimeGet, runtimeSet } from './http'
 import { checkFriendHealth, persistHealth, refreshBacklink, type PriorState } from './linkcheck'
 import { dbTime, daysSince } from '../util/time'
+import { clampText } from '../util/str'
 import { runPool } from '../util/pool'
 
 /**
@@ -216,7 +217,7 @@ async function crawlRss(
 
   let entries
   try {
-    entries = await withResolvedGuids(await parseFeed(res.body ?? ''))
+    entries = await withResolvedGuids(await parseFeed(res.body ?? '', res.finalUrl))
   } catch (e) {
     return { outcome: 'failed', error: `parse: ${e instanceof Error ? e.message : e}` }
   }
@@ -228,17 +229,18 @@ async function crawlRss(
     .sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : -1))
 
   if (friend.in_circle === 1) {
-    for (const e of valid.slice(0, cfg.crawl.maxPerFriend)) {
-      await db
-        .prepare(
-          `INSERT INTO articles (friend_id, guid, title, link, author, published_at)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(friend_id, guid) DO UPDATE SET
-             title = excluded.title, link = excluded.link, author = excluded.author, published_at = excluded.published_at`,
-        )
-        .bind(friend.id, e.guid, e.title, e.link, e.author, e.publishedAt)
-        .run()
-    }
+    await db.batch(
+      valid.slice(0, cfg.crawl.maxPerFriend).map((e) =>
+        db
+          .prepare(
+            `INSERT INTO articles (friend_id, guid, title, link, author, published_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(friend_id, guid) DO UPDATE SET
+               title = excluded.title, link = excluded.link, author = excluded.author, published_at = excluded.published_at`,
+          )
+          .bind(friend.id, e.guid, e.title, e.link, e.author, e.publishedAt),
+      ),
+    )
     await db
       .prepare(
         `DELETE FROM articles WHERE friend_id = ? AND id NOT IN (
@@ -263,7 +265,8 @@ async function crawlRss(
         WHERE friend_id = ?`,
     )
     .bind(
-      res.status, res.latencyMs, res.finalUrl, res.headers.get('etag'), res.headers.get('last-modified'),
+      res.status, res.latencyMs, clampText(res.finalUrl, 2048), clampText(res.headers.get('etag'), 500),
+      clampText(res.headers.get('last-modified'), 100),
       lastPost ? dbTime(lastPost) : null, lastPostDays,
       `+${base * 60} minutes`, friend.id,
     )
@@ -286,7 +289,7 @@ async function markCrawlFailure(db: Env['DB'], cfg: AppConfig, friendId: number,
               next_check_at = datetime('now', ?)
         WHERE friend_id = ?`,
     )
-    .bind(error, `+${base * 60} minutes`, friendId)
+    .bind(clampText(error, 2000), `+${base * 60} minutes`, friendId)
     .run()
 }
 
