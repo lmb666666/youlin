@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Hammer, Newspaper, Play, RefreshCw, Rss, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -22,7 +22,6 @@ export default function CirclePage() {
   const [singleBusy, setSingleBusy] = useState<number | null>(null)
   const [rebuildEnabled, setRebuildEnabled] = useState(false)
   const [rebuildBusy, setRebuildBusy] = useState(false)
-  const pollRef = useRef<number | null>(null)
 
   const reload = useCallback(async () => {
     try {
@@ -43,33 +42,24 @@ export default function CirclePage() {
 
   useEffect(() => {
     void reload()
-    return () => {
-      if (pollRef.current) window.clearInterval(pollRef.current)
-    }
   }, [reload])
 
-  // 全量轮转进行中 → 轮询进度
+  // 全量轮转进行中 → 轮询进度；轮询到完成时刷新数据（完成检测放在回调里，
+  // 放在 effect body 里会因清理函数先执行而永远走不到）
   useEffect(() => {
-    if (!status?.running) {
-      if (pollRef.current) {
-        window.clearInterval(pollRef.current)
-        pollRef.current = null
-        void reload()
-      }
-      return
-    }
-    if (pollRef.current) return
-    pollRef.current = window.setInterval(() => {
+    if (!status?.running) return
+    const id = window.setInterval(() => {
       void api<CrawlStatus>('/api/admin/crawl/status')
-        .then(setStatus)
+        .then((s) => {
+          setStatus(s)
+          if (!s.running) {
+            window.clearInterval(id)
+            void reload()
+          }
+        })
         .catch(() => {})
     }, 1500)
-    return () => {
-      if (pollRef.current) {
-        window.clearInterval(pollRef.current)
-        pollRef.current = null
-      }
-    }
+    return () => window.clearInterval(id)
   }, [status?.running, reload])
 
   async function triggerCrawl() {

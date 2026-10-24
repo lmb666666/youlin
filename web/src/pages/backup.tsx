@@ -248,9 +248,8 @@ export default function BackupPage() {
     if (!file || busy) return
     setBusy('restore')
     try {
-      const params = new URLSearchParams({ confirm: '1' })
-      if (!status?.webdav.configured) params.set('downloaded', ack ? '1' : '0')
-      const res = await fetch(`/api/admin/backup/restore?${params}`, {
+      // 未配 WebDAV 时服务端以「1 小时内导出过」为凭证（download() 已签发），无需客户端自证
+      const res = await fetch('/api/admin/backup/restore?confirm=1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' },
         body: file,

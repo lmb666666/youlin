@@ -18,6 +18,39 @@ import { useSettingsRefresh } from '@/lib/settings'
 
 type Values = Record<string, unknown>
 
+/** 列表型设置项：受控 split/join 会把打字中的分隔符立刻吞掉，输入期持有草稿，失焦时再解析 */
+function StringListInput({
+  value,
+  onChange,
+  id,
+  className,
+  placeholder,
+}: {
+  value: unknown
+  onChange: (v: unknown) => void
+  id: string
+  className?: string
+  placeholder?: string
+}) {
+  const joined = Array.isArray(value) ? (value as string[]).join(', ') : ''
+  const [draft, setDraft] = useState<string | null>(null)
+  return (
+    <Input
+      id={id}
+      className={className}
+      value={draft ?? joined}
+      placeholder={placeholder}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft === null) return
+        const list = draft.split(/[,，]/).map((s) => s.trim()).filter(Boolean)
+        setDraft(null)
+        onChange(list)
+      }}
+    />
+  )
+}
+
 export default function SettingsPage() {
   const refreshSettings = useSettingsRefresh()
   const [schema, setSchema] = useState<SettingsSchemaGroup[] | null>(null)
@@ -227,13 +260,7 @@ function FieldControl(props: {
         </Select>
       )}
       {f.type === 'stringList' && (
-        <Input
-          id={id}
-          className={className}
-          value={Array.isArray(value) ? (value as string[]).join(', ') : ''}
-          placeholder="逗号分隔"
-          onChange={(e) => onChange(e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean))}
-        />
+        <StringListInput id={id} className={className} value={value} onChange={onChange} placeholder="逗号分隔" />
       )}
       {f.type === 'json' && <JsonEditor id={id} value={value} className={className} onChange={onChange} />}
       {(f.type === 'string' || f.type === 'text') && (

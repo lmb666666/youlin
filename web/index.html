@@ -7,6 +7,14 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>友邻 · 管理台</title>
+    <script>
+      // 主题引导：在 CSS 绘制前挂 dark 类，避免深色用户每次加载白闪（键名与 theme.tsx 一致）
+      try {
+        var t = localStorage.getItem('youlin-theme')
+        var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        if (dark) document.documentElement.classList.add('dark')
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
