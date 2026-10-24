@@ -34,7 +34,10 @@ export interface WebDavFile {
 }
 
 const BACKUP_PREFIX = 'youlin-backup-'
+const PRE_RESTORE_PREFIX = 'pre-restore-'
 export const BACKUP_FILE_PATTERN = /^(?:youlin-backup-|pre-restore-)[\w-]+\.json\.gz$/
+/** pre-restore-* 在云端的最长保留期：只服务失败回滚，不无限累积 */
+const PRE_RESTORE_TTL_MS = 30 * 86_400_000
 
 /** 路径按段编码，保留 url 自带的路径 */
 export function joinDavUrl(base: string, ...segments: string[]): string {
@@ -87,6 +90,10 @@ export class WebDavClient {
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       throw new WebDavError('WebDAV 地址需以 http:// 或 https:// 开头')
+    }
+    // 凭据只走 WEBDAV_PASSWORD：内嵌 user:pass@ 会进库、进备份，破坏「密码不落库」承诺
+    if (parsed.username || parsed.password) {
+      throw new WebDavError('WebDAV 地址不能内嵌账号密码：用户名填在「WebDAV 用户名」，密码写在 WEBDAV_PASSWORD')
     }
     this.base = joinDavUrl(parsed.toString(), opts.path ?? '')
     this.username = opts.username.trim()
@@ -212,13 +219,39 @@ export class WebDavClient {
     return { files: list.length }
   }
 
-  /** 保留策略：只计 youlin-backup-*，恢复前存档不动 */
+  /** 保留策略：youlin-backup-* 只留最近 N 份；pre-restore-* 按 30 天 TTL 清理 */
   async prune(retain: number): Promise<number> {
     const list = await this.list()
-    const backups = list.filter((f) => f.name.startsWith(BACKUP_PREFIX))
-    const stale = backups.slice(Math.max(0, retain))
-    for (const f of stale) await this.remove(f.name)
-    return stale.length
+    const cutoff = nameStampBefore(PRE_RESTORE_TTL_MS)
+    const staleBackups = list.filter((f) => f.name.startsWith(BACKUP_PREFIX)).slice(Math.max(0, retain))
+    const stalePreRestore = list.filter((f) => f.name.startsWith(PRE_RESTORE_PREFIX) && f.name < cutoff)
+    let removed = 0
+    for (const f of [...staleBackups, ...stalePreRestore]) {
+      await this.remove(f.name)
+      removed++
+    }
+    return removed
+  }
+}
+
+/** 文件名时间戳（UTC）早于 now - ttl 的比较基准：pre-restore-20261024-073000 这类字典序可直接比 */
+function nameStampBefore(ttlMs: number): string {
+  const at = new Date(Date.now() - ttlMs)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `pre-restore-${at.getUTCFullYear()}${p(at.getUTCMonth() + 1)}${p(at.getUTCDate())}-${p(at.getUTCHours())}${p(at.getUTCMinutes())}${p(at.getUTCSeconds())}`
+}
+
+/** 展示用：抹掉可能内嵌在地址里的凭据 */
+export function redactWebdavUrl(raw: string): string {
+  try {
+    const u = new URL(raw.trim())
+    if (u.username || u.password) {
+      u.username = '***'
+      u.password = ''
+    }
+    return u.toString()
+  } catch {
+    return raw
   }
 }
 

@@ -46,6 +46,15 @@ function postBackup(path: string, body: Uint8Array | string) {
   })
 }
 
+/** 未配 WebDAV 的恢复需要 1 小时内的导出凭证；不走完整导出时直接种一枚（settings 值是 JSON） */
+async function grantRestoreTicket(): Promise<void> {
+  await env.DB.prepare(
+    "INSERT INTO settings (key, value) VALUES ('internal.prebackupAt', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  )
+    .bind(JSON.stringify(new Date().toISOString()))
+    .run()
+}
+
 beforeEach(async () => {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM articles'),
@@ -165,7 +174,7 @@ describe('备份恢复', () => {
       env.DB.prepare("INSERT INTO settings (key, value) VALUES ('ui.pageSize', '30') ON CONFLICT(key) DO UPDATE SET value = excluded.value"),
     ])
 
-    const res = await postBackup('/api/admin/backup/restore?confirm=1&downloaded=1', gz)
+    const res = await postBackup('/api/admin/backup/restore?confirm=1', gz)
     expect(res.status).toBe(200)
     const body = (await res.json()) as { ok: boolean; summary: Record<string, number> }
     expect(body.ok).toBe(true)
@@ -210,7 +219,7 @@ describe('备份恢复', () => {
       .bind('internal.keep', JSON.stringify({ at: '2026-01-01' }))
       .run()
 
-    const res = await postBackup('/api/admin/backup/restore?confirm=1&downloaded=1', gz)
+    const res = await postBackup('/api/admin/backup/restore?confirm=1', gz)
     expect(res.status).toBe(200)
     const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'internal.keep'").first<{ value: string }>()
     expect(row?.value).toContain('2026-01-01')
@@ -228,7 +237,7 @@ describe('备份恢复', () => {
       }),
     })
 
-    const res = await postBackup('/api/admin/backup/restore?confirm=1&downloaded=1', gz)
+    const res = await postBackup('/api/admin/backup/restore?confirm=1', gz)
     expect(res.status).toBe(200)
     const list = await (await authed('/api/admin/friends')).json() as { friends: { link: string }[] }
     expect(list.friends.map((f) => f.link).sort()).toEqual(['https://a.example.com/', 'https://b.example.com/'])
@@ -236,15 +245,22 @@ describe('备份恢复', () => {
 })
 
 describe('备份校验', () => {
-  it('缺确认参数、未留存当前数据时拒绝恢复', async () => {
+  it('缺确认参数、或从未下载过备份时拒绝恢复', async () => {
     const { gz } = await exportBackup()
     const noConfirm = await postBackup('/api/admin/backup/restore', gz)
     expect(noConfirm.status).toBe(400)
     expect(((await noConfirm.json()) as { error: { code: string } }).error.code).toBe('confirm_required')
 
+    // 删掉导出时签发的凭证，模拟「从未下载就恢复」
+    await env.DB.prepare("DELETE FROM settings WHERE key = 'internal.prebackupAt'").run()
     const noPre = await postBackup('/api/admin/backup/restore?confirm=1', gz)
     expect(noPre.status).toBe(400)
     expect(((await noPre.json()) as { error: { code: string } }).error.code).toBe('prebackup_required')
+
+    // 凭证恢复后同一文件可继续（导出记录在服务端，客户端无法凭空伪造）
+    await grantRestoreTicket()
+    const ok = await postBackup('/api/admin/backup/restore?confirm=1', gz)
+    expect(ok.status).toBe(200)
   })
 
   it('拒绝空文件、坏 JSON、错误格式与断链', async () => {
@@ -274,7 +290,8 @@ describe('备份校验', () => {
       },
     }
     const gz = await gzipBytes(new TextEncoder().encode(JSON.stringify(broken)))
-    const res = await postBackup('/api/admin/backup/restore?confirm=1&downloaded=1', gz)
+    await grantRestoreTicket()
+    const res = await postBackup('/api/admin/backup/restore?confirm=1', gz)
     expect(res.status).toBe(400)
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('broken_reference')
   })
@@ -294,7 +311,8 @@ describe('备份校验', () => {
         settings: {},
       },
     }
-    const res = await postBackup('/api/admin/backup/restore?confirm=1&downloaded=1', JSON.stringify(dup))
+    await grantRestoreTicket()
+    const res = await postBackup('/api/admin/backup/restore?confirm=1', JSON.stringify(dup))
     expect(res.status).toBe(400)
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('duplicate_link')
   })
@@ -311,7 +329,8 @@ describe('备份校验', () => {
         settings: { 'site.name': '新名字', 'unknown.key': 1, 'ui.pageSize': 'not-a-number' },
       },
     }
-    const res = await postBackup('/api/admin/backup/restore?confirm=1&downloaded=1', JSON.stringify(messy))
+    await grantRestoreTicket()
+    const res = await postBackup('/api/admin/backup/restore?confirm=1', JSON.stringify(messy))
     expect(res.status).toBe(200)
     const body = (await res.json()) as { summary: { settings: number; settingsSkipped: number } }
     expect(body.summary).toMatchObject({ settings: 1, settingsSkipped: 2 })
@@ -328,7 +347,8 @@ describe('备份校验', () => {
       exportedAt: '2026-01-01T00:00:00Z',
       data: { groups: [], friends: [], applications: [], settings: {} },
     }
-    const res = await postBackup('/api/admin/backup/restore?confirm=1&downloaded=1', JSON.stringify(empty))
+    await grantRestoreTicket()
+    const res = await postBackup('/api/admin/backup/restore?confirm=1', JSON.stringify(empty))
     expect(res.status).toBe(200)
     const pub = await (await SELF.fetch(BASE + '/api/links')).json() as { groups: unknown[] }
     expect(pub.groups).toEqual([])

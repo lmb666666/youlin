@@ -1,25 +1,31 @@
 import { Hono, type Context } from 'hono'
 import { jsonError, readJson } from '../../util/http'
 import type { AppEnv } from '../../types'
+import { runtimeGet, runtimeSet } from '../../crawler/http'
 import { collectBackup } from '../../backup/collect'
 import { BACKUP_MAX_BYTES, decodeBackup, gzipBytes } from '../../backup/codec'
 import { backupFileName } from '../../backup/format'
 import { applyRestore } from '../../backup/restore'
 import { readBackupStatus, recordBackupStatus } from '../../backup/status'
 import { runWebdavBackup } from '../../backup/run'
-import { BACKUP_FILE_PATTERN, WebDavError, webdavClientFor, webdavReady } from '../../backup/webdav'
+import { BACKUP_FILE_PATTERN, WebDavError, redactWebdavUrl, webdavClientFor, webdavReady } from '../../backup/webdav'
 
 /**
  * 备份与恢复（管理台「备份」页）
- *   GET  /api/admin/backup/export?articles=0|1   下载 .json.gz
+ *   GET  /api/admin/backup/export?articles=0|1   下载 .json.gz（同时签发 1 小时内的恢复凭证）
  *   POST /api/admin/backup/preview               上传文件 → 摘要（确认对话框用）
- *   POST /api/admin/backup/restore?confirm=1     覆盖式恢复（配了 WebDAV 会先自动存档）
+ *   POST /api/admin/backup/restore?confirm=1     覆盖式恢复（配了 WebDAV 会先自动存档；
+ *                                                未配 WebDAV 时要求 1 小时内下载过备份）
  *   GET  /api/admin/backup/status                最近一次备份结果
  *   POST /api/admin/backup/webdav/test           连接自检
  *   POST /api/admin/backup/webdav/run            立即上传一份
  *   GET  /api/admin/backup/webdav/list           列云端备份
  *   POST /api/admin/backup/webdav/restore        从云端文件恢复（同样先自动存档）
  */
+
+/** 未配 WebDAV 时，恢复凭证的有效期（export 时签发，防「从未备份就恢复」） */
+const PREBACKUP_WINDOW_MS = 3_600_000
+const PREBACKUP_TICKET_KEY = 'internal.prebackupAt'
 
 async function readRawBody(c: Context<AppEnv>): Promise<Uint8Array | Response> {
   const declared = Number(c.req.header('content-length') ?? '0')
@@ -48,6 +54,8 @@ export function backupRoutes() {
     const envelope = await collectBackup(c.env.DB, c.env, { includeArticles })
     const gz = await gzipBytes(new TextEncoder().encode(JSON.stringify(envelope)))
     const name = backupFileName()
+    // 签发恢复凭证：未配 WebDAV 时 restore 以「1 小时内导出过」作为留存证明
+    await runtimeSet(c.env.DB, PREBACKUP_TICKET_KEY, new Date().toISOString())
     await recordBackupStatus(c.env.DB, {
       at: new Date().toISOString(),
       ok: true,
@@ -100,10 +108,11 @@ export function backupRoutes() {
     const webdavConfigured = webdavReady(cfg, c.env.WEBDAV_PASSWORD)
     let preRestoreFile: string | null = null
     if (webdavConfigured) {
-      // 恢复前自动留存：上传失败就不动现有数据
+      // 恢复前自动留存：上传失败就不动现有数据。存档恒含文章——
+      // wipe 会无条件清空 articles，若按待恢复文件的范围存档，回滚时文章会永久丢失
       const pre = await runWebdavBackup(c.env.DB, c.env, cfg, {
         target: 'pre-restore',
-        includeArticles: decoded.envelope.data.articles !== undefined,
+        includeArticles: true,
       })
       if (!pre.ok) {
         return jsonError(
@@ -113,8 +122,13 @@ export function backupRoutes() {
         )
       }
       preRestoreFile = pre.status.file ?? null
-    } else if (c.req.query('downloaded') !== '1') {
-      return jsonError(400, 'prebackup_required', '请先下载当前数据备份，再执行恢复')
+    } else {
+      // 未配 WebDAV：以 1 小时内执行过导出为凭证（服务端记录，无法凭空伪造）
+      const ticket = await runtimeGet(c.env.DB, PREBACKUP_TICKET_KEY)
+      const ticketAt = typeof ticket === 'string' ? Date.parse(ticket) : NaN
+      if (!Number.isFinite(ticketAt) || Date.now() - ticketAt > PREBACKUP_WINDOW_MS) {
+        return jsonError(400, 'prebackup_required', '请先在备份页下载一份当前数据的备份（1 小时内），再执行恢复')
+      }
     }
 
     const outcome = await applyRestore(c.env.DB, decoded.envelope)
@@ -135,7 +149,7 @@ export function backupRoutes() {
       },
       webdav: {
         configured: webdavReady(cfg, c.env.WEBDAV_PASSWORD),
-        url: cfg.backup.webdavUrl,
+        url: redactWebdavUrl(cfg.backup.webdavUrl),
         path: cfg.backup.webdavPath,
       },
     })

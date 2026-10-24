@@ -164,8 +164,12 @@ describe('WebDAV 备份', () => {
     for (const stamp of ['20260101-000000', '20260102-000000', '20260103-000000']) {
       store.set(`youlin-backup-${stamp}.json.gz`, { bytes: new Uint8Array([1]), at: new Date(stamp.slice(0, 4) + '-01-01') })
     }
-    // 恢复前存档不应被保留策略删除
-    store.set('pre-restore-20251201-000000.json.gz', { bytes: new Uint8Array([1]), at: new Date('2025-12-01') })
+    // 恢复前存档：30 天内的保留，超过 30 天的清掉
+    const p = (n: number) => String(n).padStart(2, '0')
+    const fresh = new Date(Date.now() - 3 * 86_400_000)
+    const freshName = `pre-restore-${fresh.getUTCFullYear()}${p(fresh.getUTCMonth() + 1)}${p(fresh.getUTCDate())}-000000.json.gz`
+    store.set(freshName, { bytes: new Uint8Array([1]), at: fresh })
+    store.set('pre-restore-20250101-000000.json.gz', { bytes: new Uint8Array([1]), at: new Date('2025-01-01') })
 
     const res = await authed('/api/admin/backup/webdav/run', { method: 'POST' })
     expect(res.status).toBe(200)
@@ -176,7 +180,8 @@ describe('WebDAV 备份', () => {
 
     const backups = [...store.keys()].filter((n) => n.startsWith('youlin-backup-')).sort()
     expect(backups).toHaveLength(2)
-    expect(store.has('pre-restore-20251201-000000.json.gz')).toBe(true)
+    expect(store.has(freshName)).toBe(true)
+    expect(store.has('pre-restore-20250101-000000.json.gz')).toBe(false)
 
     // 上传内容确实是可解析的备份
     const uploaded = store.get(body.status.file)!
@@ -240,42 +245,58 @@ describe('WebDAV 备份', () => {
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('invalid_name')
   })
 
-  it('自动备份到点才执行（周期内重复 tick 不会重复上传）', async () => {
+  it('自动备份到点才执行；手动上传不占用自动周期', async () => {
     await seedFriend()
     await configureDav({ 'backup.enabled': true, 'backup.schedule': 'daily' })
 
-    const first = await authed('/api/admin/backup/webdav/run', { method: 'POST' })
-    expect(first.status).toBe(200)
-    const filesAfterFirst = [...store.keys()].filter((n) => n.startsWith('youlin-backup-')).length
-    expect(filesAfterFirst).toBe(1)
+    const manual = await authed('/api/admin/backup/webdav/run', { method: 'POST' })
+    expect(manual.status).toBe(200)
 
-    // 周期未到：直接调用 maybeRunScheduledBackup 应返回 null（通过 cron 触发路径验证）
+    // 手动上传不写调度时间戳：自动备份仍会按自己的周期跑
     const { loadConfig } = await import('../src/config/loader')
     const { maybeRunScheduledBackup } = await import('../src/backup/run')
     const { cfg } = await loadConfig(env.DB, env)
-    const skipped = await maybeRunScheduledBackup(env.DB, env, cfg)
-    expect(skipped).toBeNull()
+    const firstName = ((await (await authed('/api/admin/backup/webdav/list')).json()) as { files: { name: string }[] }).files[0]!.name
+    const beforeAt = store.get(firstName)!.at.getTime()
+
+    const auto = await maybeRunScheduledBackup(env.DB, env, cfg)
+    expect(auto?.ok).toBe(true)
+    // 同一秒内文件名相同（时间戳粒度为秒），以更新时间证明 auto 重新上传了一份
+    expect(store.get(firstName)!.at.getTime()).toBeGreaterThan(beforeAt)
+
+    // 周期内重复 tick 不再上传
+    expect(await maybeRunScheduledBackup(env.DB, env, cfg)).toBeNull()
   })
-  it('上传失败记状态且周期内不再重试', async () => {
+
+  it('自动备份失败 10 分钟内不重试，到期后重试', async () => {
     await seedFriend()
     await configureDav({ 'backup.enabled': true, 'backup.schedule': 'daily' })
     putFails = true
 
-    const res = await authed('/api/admin/backup/webdav/run', { method: 'POST' })
-    expect(res.status).toBe(502)
-    const body = (await res.json()) as { error: { code: string; message: string } }
-    expect(body.error.code).toBe('webdav_backup_failed')
-    expect(body.error.message).toContain('500')
+    // 手动触发的失败照常记录
+    const manual = await authed('/api/admin/backup/webdav/run', { method: 'POST' })
+    expect(manual.status).toBe(502)
+
+    const { loadConfig } = await import('../src/config/loader')
+    const { maybeRunScheduledBackup } = await import('../src/backup/run')
+    const { cfg } = await loadConfig(env.DB, env)
+
+    const failed = await maybeRunScheduledBackup(env.DB, env, cfg)
+    expect(failed?.ok).toBe(false)
+
+    // 失败后短退避：周期内 tick 不再重试，避免每 5 分钟打一次失败的 WebDAV
+    expect(await maybeRunScheduledBackup(env.DB, env, cfg)).toBeNull()
 
     const status = await json<{ last: { ok: boolean; error?: string } }>('/api/admin/backup/status')
     expect(status.last.ok).toBe(false)
     expect(status.last.error).toContain('500')
+  })
 
-    // 失败也写了尝试时间：周期内不再重试，避免每 5 分钟打一次失败的 WebDAV
-    const { loadConfig } = await import('../src/config/loader')
-    const { maybeRunScheduledBackup } = await import('../src/backup/run')
-    const { cfg } = await loadConfig(env.DB, env)
-    expect(await maybeRunScheduledBackup(env.DB, env, cfg)).toBeNull()
+  it('WebDAV 地址不允许内嵌账号密码（凭据只走 WEBDAV_PASSWORD）', async () => {
+    const { WebDavClient } = await import('../src/backup/webdav')
+    expect(() => new WebDavClient({ url: 'https://davuser:pass@dav.test/dav', username: 'x', password: 'y' })).toThrow(
+      /内嵌账号密码/,
+    )
   })
 
   it('非 ASCII 凭据按 UTF-8 编码（btoa 直接处理会抛错）', async () => {
