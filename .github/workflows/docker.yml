@@ -101,10 +101,13 @@ jobs:
 
       - name: 合并多架构 manifest 并推送
         working-directory: /tmp/digests
+        env:
+          # 多行值经 env 传递，循环里按空白分词（直接内插会把 for 语句截断）
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           set -eu
           refs=$(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
-          for tag in ${{ steps.meta.outputs.tags }}; do
+          for tag in $TAGS; do
             echo "推送标签：$tag"
             docker buildx imagetools create $refs --tag "$tag"
           done
