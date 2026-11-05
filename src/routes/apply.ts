@@ -9,6 +9,18 @@ import { fetchRemote } from '../crawler/http'
 import { htmlContainsBacklink, normalizeDomain } from '../crawler/linkcheck'
 import { dateOnly } from '../util/time'
 import { httpUrl } from '../util/validate'
+import { linkVariants } from '../util/link'
+import { ensureGroupByName } from '../repositories/groups'
+import {
+  createAutoApprovedApplication,
+  findFriendIdByLinks,
+  findPendingApplicationIdByLinks,
+  getApplyRateCount,
+  insertApplication,
+  recordApplySuccess,
+  type ApplicationInsert,
+  type FriendInsert,
+} from '../repositories/applications'
 
 /**
  * 友链申请接口（DESIGN §4.3）
@@ -45,12 +57,6 @@ const FIELD_LABELS: Record<string, string> = {
 
 function nonEmpty(v: unknown): boolean {
   return typeof v === 'string' && v.trim() !== ''
-}
-
-/** link 的等价写法（尾斜杠差异不应绕过去重） */
-export function linkVariants(link: string): string[] {
-  const noSlash = link.replace(/\/+$/, '')
-  return [...new Set([link, noSlash, noSlash + '/'])]
 }
 
 async function verifyTurnstile(env: Env, secret: string, token: string, ip: string): Promise<boolean> {
@@ -93,23 +99,6 @@ async function checkApplicantBacklink(env: Env, cfg: AppConfig, link: string): P
       2000,
     ),
   }
-}
-
-/** 审核通过入库时的默认分组（autoApprove 与手动通过共用） */
-export async function ensureGroupByName(db: Env['DB'], name: string): Promise<number> {
-  const row = await db.prepare('SELECT id FROM groups WHERE name = ?').bind(name).first<{ id: number }>()
-  if (row) return row.id
-  const next = await db.prepare('SELECT COALESCE(MAX(sort), -1) + 1 AS next FROM groups').first<{ next: number }>()
-  try {
-    const res = await db.prepare('INSERT INTO groups (name, sort) VALUES (?, ?)').bind(name, next?.next ?? 0).run()
-    return Number(res.meta.last_row_id)
-  } catch (e) {
-    // 并发创建撞 groups.name 唯一索引（0003）：回查对方刚建好的分组
-    if (!isUniqueConstraintError(e)) throw e
-  }
-  const created = await db.prepare('SELECT id FROM groups WHERE name = ?').bind(name).first<{ id: number }>()
-  if (!created) throw new Error(`分组「${name}」创建失败`)
-  return created.id
 }
 
 export function applyRoutes() {
@@ -166,10 +155,7 @@ export function applyRoutes() {
     const day = new Date().toISOString().slice(0, 10)
 
     // 限流：每 IP 每天成功提交次数（先查后计，计数在成功提交时 +1）
-    const rate = await c.env.DB.prepare('SELECT count FROM apply_rate_limit WHERE ip = ? AND day = ?')
-      .bind(ip, day)
-      .first<{ count: number }>()
-    if ((rate?.count ?? 0) >= cfg.apply.rateLimitPerDay) {
+    if (getApplyRateCount(c.env.DB, ip, day) >= cfg.apply.rateLimitPerDay) {
       return jsonError(429, 'rate_limited', `每 IP 每天最多提交 ${cfg.apply.rateLimitPerDay} 次，请明天再试`)
     }
 
@@ -177,18 +163,12 @@ export function applyRoutes() {
 
     // 去重：已在友链表 / 已有待审申请
     const variants = linkVariants(link)
-    const inFriends = await c.env.DB.prepare(
-      `SELECT 1 AS x FROM friends WHERE link IN (${variants.map(() => '?').join(',')}) LIMIT 1`,
-    )
-      .bind(...variants)
-      .first()
-    if (inFriends) return jsonError(409, 'duplicate_link', '该链接已在友链中')
-    const inPending = await c.env.DB.prepare(
-      `SELECT 1 AS x FROM applications WHERE status = 'pending' AND link IN (${variants.map(() => '?').join(',')}) LIMIT 1`,
-    )
-      .bind(...variants)
-      .first()
-    if (inPending) return jsonError(409, 'already_pending', '该链接已有待审申请')
+    if (findFriendIdByLinks(c.env.DB, variants) !== null) {
+      return jsonError(409, 'duplicate_link', '该链接已在友链中')
+    }
+    if (findPendingApplicationIdByLinks(c.env.DB, variants) !== null) {
+      return jsonError(409, 'already_pending', '该链接已有待审申请')
+    }
 
     // 人机验证（apply.turnstile；密钥在部署级 Secret）
     if (cfg.apply.turnstile) {
@@ -223,53 +203,54 @@ export function applyRoutes() {
     const note = nonEmpty(input.note) ? input.note!.trim() : null
     const backlinkOk = backlink.ok === null ? null : backlink.ok ? 1 : 0
     const nowDb = new Date().toISOString().slice(0, 19).replace('T', ' ')
-    const applicationColumns = `INSERT INTO applications (site_name, author, link, avatar, feed, "desc", contact, note,
-                                 backlink_ok, backlink_checked_at, backlink_detail, status, review_note, reviewed_at)`
-    const applicationValues = [
-      siteName, author, link, avatar, feed, desc, contact, note,
-      backlinkOk, backlink.detail === null ? null : nowDb, backlink.detail,
-    ] as const
+    const application: ApplicationInsert = {
+      siteName,
+      author,
+      link,
+      avatar,
+      feed,
+      desc,
+      contact,
+      note,
+      backlinkOk,
+      backlinkCheckedAt: backlink.detail === null ? null : nowDb,
+      backlinkDetail: backlink.detail,
+      status: cfg.apply.autoApprove ? 'approved' : 'pending',
+      reviewNote: null,
+      reviewedAt: null,
+    }
 
     let status: 'pending' | 'approved' = 'pending'
     let applicationId: number
 
     if (cfg.apply.autoApprove) {
-      const groupId = await ensureGroupByName(c.env.DB, '未分组')
-      // 建友链与写申请放在同一个 batch：中途失败不会留下“有友链、没申请”的半成品
+      const groupId = ensureGroupByName(c.env.DB, '未分组')
+      const friend: Omit<FriendInsert, 'groupId'> = {
+        author: author ?? siteName,
+        title: siteName,
+        desc,
+        link,
+        feed,
+        avatar,
+        since: dateOnly(new Date())!,
+        inCircle: 1,
+        comment: note,
+      }
+      // 建友链与写申请在同一事务内完成
       try {
-        const results = await c.env.DB.batch([
-          c.env.DB.prepare(
-            `INSERT INTO friends (group_id, author, title, "desc", link, feed, avatar, since, in_circle, comment)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
-          ).bind(groupId, author ?? siteName, siteName, desc, link, feed, avatar, dateOnly(new Date())!, note),
-          c.env.DB.prepare(
-            `${applicationColumns}
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved',
-                     'autoApprove（友链 #' || (SELECT id FROM friends WHERE link = ? ORDER BY id DESC LIMIT 1) || '）', ?)`,
-          ).bind(...applicationValues, link, nowDb),
-        ])
-        applicationId = Number(results[1]?.meta.last_row_id)
+        const created = createAutoApprovedApplication(c.env.DB, groupId, friend, application, nowDb)
+        applicationId = created.applicationId
         status = 'approved'
       } catch (e) {
         if (isUniqueConstraintError(e)) return jsonError(409, 'duplicate_link', '该链接已在友链中')
         throw e
       }
     } else {
-      const ins = await c.env.DB.prepare(
-        `${applicationColumns} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL)`,
-      )
-        .bind(...applicationValues)
-        .run()
-      applicationId = Number(ins.meta.last_row_id)
+      applicationId = insertApplication(c.env.DB, application)
     }
 
     // 成功才计入限流；顺带清理过期计数
-    await c.env.DB.batch([
-      c.env.DB.prepare(
-        'INSERT INTO apply_rate_limit (ip, day, count) VALUES (?, ?, 1) ON CONFLICT(ip, day) DO UPDATE SET count = count + 1',
-      ).bind(ip, day),
-      c.env.DB.prepare('DELETE FROM apply_rate_limit WHERE day < ?').bind(day),
-    ])
+    recordApplySuccess(c.env.DB, ip, day)
 
     return c.json({ id: applicationId, status, backlink }, 201)
   })

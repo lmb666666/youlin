@@ -3,8 +3,18 @@ import { z } from 'zod'
 import { jsonError, readJson } from '../../util/http'
 import { isoUtc, dateOnly } from '../../util/time'
 import { dateYMD, httpUrl } from '../../util/validate'
+import { linkVariants } from '../../util/link'
 import { triggerRebuild } from '../../rebuild'
-import { ensureGroupByName, linkVariants } from '../apply'
+import { ensureGroupByName, findGroupById } from '../../repositories/groups'
+import {
+  approveApplication,
+  findApplicationById,
+  findFriendIdByLinks,
+  listApplications,
+  rejectApplication,
+  type FriendInsert,
+} from '../../repositories/applications'
+import type { ApplicationRow } from '../../server/schema'
 import type { AppEnv } from '../../types'
 
 /**
@@ -15,29 +25,10 @@ import type { AppEnv } from '../../types'
  *   POST /api/admin/rebuild                   手动触发接入方重建
  */
 
-interface ApplicationRow {
-  id: number
-  site_name: string
-  author: string | null
-  link: string
-  avatar: string | null
-  feed: string | null
-  desc: string | null
-  contact: string | null
-  note: string | null
-  backlink_ok: number | null
-  backlink_checked_at: string | null
-  backlink_detail: string | null
-  status: string
-  review_note: string | null
-  created_at: string
-  reviewed_at: string | null
-}
-
 function shape(r: ApplicationRow) {
   return {
     id: r.id,
-    siteName: r.site_name,
+    siteName: r.siteName,
     author: r.author ?? undefined,
     link: r.link,
     avatar: r.avatar ?? undefined,
@@ -46,14 +37,14 @@ function shape(r: ApplicationRow) {
     contact: r.contact ?? undefined,
     note: r.note ?? undefined,
     backlink: {
-      ok: r.backlink_ok === null ? null : r.backlink_ok === 1,
-      checkedAt: isoUtc(r.backlink_checked_at) ?? null,
-      detail: r.backlink_detail ?? null,
+      ok: r.backlinkOk === null ? null : r.backlinkOk === 1,
+      checkedAt: isoUtc(r.backlinkCheckedAt) ?? null,
+      detail: r.backlinkDetail ?? null,
     },
     status: r.status,
-    reviewNote: r.review_note ?? undefined,
-    createdAt: isoUtc(r.created_at),
-    reviewedAt: isoUtc(r.reviewed_at) ?? undefined,
+    reviewNote: r.reviewNote ?? undefined,
+    createdAt: isoUtc(r.createdAt),
+    reviewedAt: isoUtc(r.reviewedAt) ?? undefined,
   }
 }
 
@@ -77,16 +68,13 @@ export function applicationRoutes() {
 
   app.get('/api/admin/applications', async (c) => {
     const status = c.req.query('status') ?? 'pending'
-    const allowed = ['pending', 'approved', 'rejected', 'all']
-    if (!allowed.includes(status)) return jsonError(400, 'invalid_status', `status 须为 ${allowed.join(' / ')}`)
-    const stmt = c.env.DB.prepare(
-      `SELECT * FROM applications ${status === 'all' ? '' : 'WHERE status = ?'} ORDER BY created_at DESC, id DESC LIMIT 200`,
-    )
-    const rows =
-      status === 'all'
-        ? await stmt.all<ApplicationRow>()
-        : await stmt.bind(status).all<ApplicationRow>()
-    return c.json({ applications: rows.results.map(shape) })
+    const allowed = ['pending', 'approved', 'rejected', 'all'] as const
+    if (!allowed.includes(status as (typeof allowed)[number])) {
+      return jsonError(400, 'invalid_status', `status 须为 ${allowed.join(' / ')}`)
+    }
+    return c.json({
+      applications: listApplications(c.env.DB, status as (typeof allowed)[number]).map(shape),
+    })
   })
 
   app.post('/api/admin/applications/:id/approve', async (c) => {
@@ -97,51 +85,33 @@ export function applicationRoutes() {
     if (!parsed.success) return jsonError(400, 'validation_failed', '字段校验失败')
     const overrides = parsed.data
 
-    const app_ = await c.env.DB.prepare('SELECT * FROM applications WHERE id = ?').bind(id).first<ApplicationRow>()
+    const app_ = findApplicationById(c.env.DB, id)
     if (!app_) return jsonError(404, 'not_found', '申请不存在')
     if (app_.status !== 'pending') return jsonError(409, 'already_reviewed', `该申请已处理（${app_.status}）`)
 
-    const variants = linkVariants(app_.link)
-    const dup = await c.env.DB.prepare(
-      `SELECT id FROM friends WHERE link IN (${variants.map(() => '?').join(',')}) LIMIT 1`,
-    )
-      .bind(...variants)
-      .first<{ id: number }>()
-    if (dup) return jsonError(409, 'duplicate_link', `该链接已在友链中（#${dup.id}），可先删除旧记录再通过`)
+    const dupId = findFriendIdByLinks(c.env.DB, linkVariants(app_.link))
+    if (dupId !== null) return jsonError(409, 'duplicate_link', `该链接已在友链中（#${dupId}），可先删除旧记录再通过`)
 
-    const groupId = overrides.groupId ?? (await ensureGroupByName(c.env.DB, '未分组'))
-    const groupExists = await c.env.DB.prepare('SELECT id FROM groups WHERE id = ?').bind(groupId).first()
-    if (!groupExists) return jsonError(400, 'unknown_group', '分组不存在')
+    const groupId = overrides.groupId ?? ensureGroupByName(c.env.DB, '未分组')
+    if (!findGroupById(c.env.DB, groupId)) return jsonError(400, 'unknown_group', '分组不存在')
 
     const cfg = c.get('cfg')
     const nowDb = new Date().toISOString().slice(0, 19).replace('T', ' ')
     // 覆盖值为空串时回退到申请值/站点名；空作者会破坏公开接口的 author 必填契约
-    const author = overrides.author?.trim() || app_.author?.trim() || app_.site_name.trim()
-    const title = overrides.title?.trim() || app_.site_name.trim()
-    // 建友链与状态翻转放进同一个 batch（原子）：中途失败不会出现「友链已建、申请仍 pending」
-    const results = await c.env.DB.batch([
-      c.env.DB.prepare(
-        `INSERT INTO friends (group_id, author, title, "desc", link, feed, avatar, since, in_circle, comment)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
-      ).bind(
-        groupId,
-        author,
-        title,
-        overrides.desc ?? app_.desc,
-        app_.link,
-        overrides.feed === '' ? null : (overrides.feed ?? app_.feed),
-        overrides.avatar === '' ? null : (overrides.avatar ?? app_.avatar),
-        overrides.since ?? dateOnly(new Date())!,
-        app_.note,
-      ),
-      c.env.DB.prepare(
-        `UPDATE applications SET status = 'approved',
-                review_note = '通过（友链 #' || (SELECT id FROM friends WHERE link = ? ORDER BY id DESC LIMIT 1) || '）',
-                reviewed_at = ?
-          WHERE id = ?`,
-      ).bind(app_.link, nowDb, id),
-    ])
-    const friendId = Number(results[0]?.meta.last_row_id)
+    const author = overrides.author?.trim() || app_.author?.trim() || app_.siteName.trim()
+    const title = overrides.title?.trim() || app_.siteName.trim()
+    const friend: Omit<FriendInsert, 'groupId'> = {
+      author,
+      title,
+      desc: overrides.desc ?? app_.desc,
+      link: app_.link,
+      feed: overrides.feed === '' ? null : (overrides.feed ?? app_.feed),
+      avatar: overrides.avatar === '' ? null : (overrides.avatar ?? app_.avatar),
+      since: overrides.since ?? dateOnly(new Date())!,
+      inCircle: 1,
+      comment: app_.note,
+    }
+    const friendId = approveApplication(c.env.DB, id, groupId, friend, nowDb)
 
     // 通过后可选触发接入方重建（显式请求或 rebuild.auto + enabled）
     let rebuild: { triggered: boolean; provider?: string; debounced?: boolean; error?: string } | null = null
@@ -160,14 +130,12 @@ export function applicationRoutes() {
     const parsed = z.object({ reason: z.string().max(2000).optional() }).strict().safeParse(body ?? {})
     if (!parsed.success) return jsonError(400, 'validation_failed', '字段校验失败')
 
-    const app_ = await c.env.DB.prepare('SELECT id, status FROM applications WHERE id = ?').bind(id).first<{ id: number; status: string }>()
+    const app_ = findApplicationById(c.env.DB, id)
     if (!app_) return jsonError(404, 'not_found', '申请不存在')
     if (app_.status !== 'pending') return jsonError(409, 'already_reviewed', `该申请已处理（${app_.status}）`)
 
     const nowDb = new Date().toISOString().slice(0, 19).replace('T', ' ')
-    await c.env.DB.prepare('UPDATE applications SET status = ?, review_note = ?, reviewed_at = ? WHERE id = ?')
-      .bind('rejected', parsed.data.reason ?? null, nowDb, id)
-      .run()
+    rejectApplication(c.env.DB, id, parsed.data.reason ?? null, nowDb)
     return c.json({ ok: true })
   })
 

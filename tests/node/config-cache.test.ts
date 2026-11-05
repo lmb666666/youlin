@@ -15,29 +15,21 @@ describe('配置读取缓存', () => {
     const raw = new Database(':memory:')
     applyMigrations(raw, path.join(ROOT, 'migrations'))
     const base = new SqliteDb(raw)
-    let selects = 0
-    const db = new Proxy(base, {
-      get(target, prop, receiver) {
-        if (prop === 'prepare') {
-          return (query: string) => {
-            if (/SELECT key, value FROM settings/.test(query)) selects++
-            return target.prepare(query)
-          }
-        }
-        const value = Reflect.get(target, prop, receiver)
-        return typeof value === 'function' ? value.bind(target) : value
-      },
-    }) as SqliteDb
     const env = { YOULIN_CONFIG_OVERRIDES: '' } as Env
 
     try {
-      await loadFlatSettings(db, env)
-      await loadFlatSettings(db, env)
-      expect(selects).toBe(1)
+      const initial = await loadFlatSettings(base, env)
+      expect(initial['site.name']).toBe('我的博客')
+
+      raw.prepare("INSERT INTO settings (key, value) VALUES ('site.name', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .run(JSON.stringify('缓存测试'))
+
+      const cached = await loadFlatSettings(base, env)
+      expect(cached['site.name']).toBe('我的博客')
 
       invalidateConfigCache()
-      await loadFlatSettings(db, env)
-      expect(selects).toBe(2)
+      const fresh = await loadFlatSettings(base, env)
+      expect(fresh['site.name']).toBe('缓存测试')
     } finally {
       setConfigCacheMs(0)
       base.close()

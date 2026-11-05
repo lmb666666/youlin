@@ -4,6 +4,7 @@ import { jsonError, fieldDetails, readJson } from '../../util/http'
 import { settingsImportZod, settingsSchemaPayload, fieldSchemas } from '../../config/schema'
 import { CONFIG_VERSION } from '../../config/definition'
 import { defaultsFlat, invalidateConfigCache, loadFlatSettings } from '../../config/loader'
+import { replaceConfigSettings, upsertSettings } from '../../repositories/settings'
 import type { AppEnv } from '../../types'
 
 export function settingsRoutes() {
@@ -36,13 +37,7 @@ export function settingsRoutes() {
       return jsonError(400, 'validation_failed', '配置校验失败', fieldDetails(parsed.error.issues))
     }
 
-    await c.env.DB.batch(
-      Object.entries(parsed.data).map(([k, v]) =>
-        c.env.DB.prepare(
-          'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-        ).bind(k, JSON.stringify(v)),
-      ),
-    )
+    upsertSettings(c.env.DB, parsed.data)
     invalidateConfigCache()
     const flat = await loadFlatSettings(c.env.DB, c.env)
     return c.json({ version: CONFIG_VERSION, values: flat })
@@ -64,14 +59,7 @@ export function settingsRoutes() {
       return jsonError(400, 'validation_failed', '配置校验失败', fieldDetails(parsed.error.issues))
     }
     // 旧版导出的文件可能缺少后续新增的键：缺失项回退默认值，其余按键替换
-    const entries = Object.entries({ ...defaultsFlat(), ...parsed.data })
-    await c.env.DB.batch([
-      c.env.DB.prepare("DELETE FROM settings WHERE key != ? AND key NOT LIKE 'internal.%'").bind('settings.schemaVersion'),
-      ...entries.map(([k, v]) =>
-        c.env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-          .bind(k, JSON.stringify(v)),
-      ),
-    ])
+    replaceConfigSettings(c.env.DB, { ...defaultsFlat(), ...parsed.data })
     invalidateConfigCache()
     const flat = await loadFlatSettings(c.env.DB, c.env)
     return c.json({ version: CONFIG_VERSION, values: flat })

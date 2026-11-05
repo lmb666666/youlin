@@ -1,6 +1,7 @@
 import type { Env, AppConfig } from '../types'
 import { CONFIG_FIELDS, CONFIG_TOP_KEYS } from './definition'
 import { fieldSchemas, toNested, type FlatSettings } from './schema'
+import { listSettings } from '../repositories/settings'
 
 /**
  * 配置三层合并（DESIGN §9）：
@@ -73,9 +74,8 @@ export async function loadFlatSettings(db: Env['DB'], env: Env): Promise<FlatSet
   let merged = defaultsFlat()
 
   // 第二层：SQLite settings 表
-  const rows = await db.prepare('SELECT key, value FROM settings').all<{ key: string; value: string }>()
   const stored: FlatSettings = {}
-  for (const row of rows.results) {
+  for (const row of listSettings(db)) {
     // internal.* 是运行时簿记（轮转进度等），settings.* 是表自身的版本号，都不属于应用配置
     if (row.key.startsWith('internal.') || row.key.startsWith('settings.')) continue
     try {
