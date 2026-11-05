@@ -215,53 +215,53 @@ export function applyRoutes() {
 
     // 落库（autoApprove 直接入库并建友链）
     const siteName = nonEmpty(input.siteName) ? input.siteName!.trim() : new URL(link).hostname
+    const author = nonEmpty(input.author) ? input.author!.trim() : null
+    const avatar = nonEmpty(input.avatar) ? input.avatar!.trim() : null
+    const feed = nonEmpty(input.feed) ? input.feed!.trim() : null
+    const desc = nonEmpty(input.desc) ? input.desc!.trim() : null
+    const contact = nonEmpty(input.contact) ? input.contact!.trim() : null
+    const note = nonEmpty(input.note) ? input.note!.trim() : null
+    const backlinkOk = backlink.ok === null ? null : backlink.ok ? 1 : 0
+    const nowDb = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const applicationColumns = `INSERT INTO applications (site_name, author, link, avatar, feed, "desc", contact, note,
+                                 backlink_ok, backlink_checked_at, backlink_detail, status, review_note, reviewed_at)`
+    const applicationValues = [
+      siteName, author, link, avatar, feed, desc, contact, note,
+      backlinkOk, backlink.detail === null ? null : nowDb, backlink.detail,
+    ] as const
+
     let status: 'pending' | 'approved' = 'pending'
-    let friendId: number | null = null
+    let applicationId: number
+
     if (cfg.apply.autoApprove) {
       const groupId = await ensureGroupByName(c.env.DB, '未分组')
-      const res = await c.env.DB.prepare(
-        `INSERT INTO friends (group_id, author, title, "desc", link, feed, avatar, since, in_circle, comment)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      // 建友链与写申请放在同一个 batch：中途失败不会留下“有友链、没申请”的半成品
+      try {
+        const results = await c.env.DB.batch([
+          c.env.DB.prepare(
+            `INSERT INTO friends (group_id, author, title, "desc", link, feed, avatar, since, in_circle, comment)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+          ).bind(groupId, author ?? siteName, siteName, desc, link, feed, avatar, dateOnly(new Date())!, note),
+          c.env.DB.prepare(
+            `${applicationColumns}
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved',
+                     'autoApprove（友链 #' || (SELECT id FROM friends WHERE link = ? ORDER BY id DESC LIMIT 1) || '）', ?)`,
+          ).bind(...applicationValues, link, nowDb),
+        ])
+        applicationId = Number(results[1]?.meta.last_row_id)
+        status = 'approved'
+      } catch (e) {
+        if (isUniqueConstraintError(e)) return jsonError(409, 'duplicate_link', '该链接已在友链中')
+        throw e
+      }
+    } else {
+      const ins = await c.env.DB.prepare(
+        `${applicationColumns} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL)`,
       )
-        .bind(
-          groupId,
-          nonEmpty(input.author) ? input.author!.trim() : siteName,
-          siteName,
-          nonEmpty(input.desc) ? input.desc!.trim() : null,
-          link, // 与去重口径一致（trim 后），避免空白变体绕过唯一索引
-          nonEmpty(input.feed) ? input.feed!.trim() : null,
-          nonEmpty(input.avatar) ? input.avatar!.trim() : null,
-          dateOnly(new Date())!,
-          nonEmpty(input.note) ? input.note!.trim() : null,
-        )
+        .bind(...applicationValues)
         .run()
-      friendId = Number(res.meta.last_row_id)
-      status = 'approved'
+      applicationId = Number(ins.meta.last_row_id)
     }
-
-    const nowDb = new Date().toISOString().slice(0, 19).replace('T', ' ')
-    const ins = await c.env.DB.prepare(
-      `INSERT INTO applications (site_name, author, link, avatar, feed, "desc", contact, note,
-                                 backlink_ok, backlink_checked_at, backlink_detail, status, review_note, reviewed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(
-        siteName,
-        nonEmpty(input.author) ? input.author!.trim() : null,
-        link,
-        nonEmpty(input.avatar) ? input.avatar!.trim() : null,
-        nonEmpty(input.feed) ? input.feed!.trim() : null,
-        nonEmpty(input.desc) ? input.desc!.trim() : null,
-        nonEmpty(input.contact) ? input.contact!.trim() : null,
-        nonEmpty(input.note) ? input.note!.trim() : null,
-        backlink.ok === null ? null : backlink.ok ? 1 : 0,
-        backlink.detail === null ? null : nowDb,
-        backlink.detail,
-        status,
-        status === 'approved' ? `autoApprove（友链 #${friendId}）` : null,
-        status === 'approved' ? nowDb : null,
-      )
-      .run()
 
     // 成功才计入限流；顺带清理过期计数
     await c.env.DB.batch([
@@ -271,7 +271,7 @@ export function applyRoutes() {
       c.env.DB.prepare('DELETE FROM apply_rate_limit WHERE day < ?').bind(day),
     ])
 
-    return c.json({ id: Number(ins.meta.last_row_id), status, backlink }, 201)
+    return c.json({ id: applicationId, status, backlink }, 201)
   })
 
   return app

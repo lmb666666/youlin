@@ -56,6 +56,7 @@ export default function SettingsPage() {
   const [schema, setSchema] = useState<SettingsSchemaGroup[] | null>(null)
   const [values, setValues] = useState<Values | null>(null)
   const [dirty, setDirty] = useState<Values>({})
+  const [invalidKeys, setInvalidKeys] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
 
   const reload = useCallback(async () => {
@@ -65,6 +66,7 @@ export default function SettingsPage() {
       setSchema(s.groups)
       setValues(v.values)
       setDirty({})
+      setInvalidKeys(new Set())
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '加载设置失败')
     }
@@ -81,8 +83,17 @@ export default function SettingsPage() {
     setDirty((d) => ({ ...d, [key]: value }))
   }
 
+  const markInvalid = useCallback((key: string, invalid: boolean) => {
+    setInvalidKeys((prev) => {
+      const next = new Set(prev)
+      if (invalid) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }, [])
+
   async function save() {
-    if (sendable.length === 0 || busy) return
+    if (sendable.length === 0 || busy || invalidKeys.size > 0) return
     setBusy(true)
     try {
       const res = await api<{ values: Values }>('/api/admin/settings', {
@@ -91,6 +102,7 @@ export default function SettingsPage() {
       })
       setValues(res.values)
       setDirty({})
+      setInvalidKeys(new Set())
       refreshSettings()
       toast.success(`已保存 ${sendable.length} 项设置`)
     } catch (err) {
@@ -158,11 +170,15 @@ export default function SettingsPage() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-          <Button onClick={() => void save()} disabled={sendable.length === 0 || busy}>
+          <Button onClick={() => void save()} disabled={sendable.length === 0 || busy || invalidKeys.size > 0}>
             <Save /> 保存{sendable.length > 0 ? `（${sendable.length}）` : ''}
           </Button>
         </div>
       </div>
+
+      {invalidKeys.size > 0 && (
+        <p className="text-xs text-destructive">存在非法 JSON，修正后才能保存。</p>
+      )}
 
       {schema.map((group) => (
         <Card key={group.key}>
@@ -172,7 +188,14 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             {group.fields.map((f) => (
-              <FieldControl key={f.key} field={f} value={values[f.key]} dirty={f.key in dirty} onChange={(v) => setField(f.key, v)} />
+              <FieldControl
+                key={f.key}
+                field={f}
+                value={values[f.key]}
+                dirty={f.key in dirty}
+                onChange={(v) => setField(f.key, v)}
+                onInvalidChange={(invalid) => markInvalid(f.key, invalid)}
+              />
             ))}
           </CardContent>
         </Card>
@@ -187,7 +210,19 @@ export default function SettingsPage() {
 }
 
 /** JSON 字段编辑器：本地草稿态，避免输入过程中非法 JSON 触发回跳 */
-function JsonEditor({ id, value, className, onChange }: { id: string; value: unknown; className?: string; onChange: (v: unknown) => void }) {
+function JsonEditor({
+  id,
+  value,
+  className,
+  onChange,
+  onInvalidChange,
+}: {
+  id: string
+  value: unknown
+  className?: string
+  onChange: (v: unknown) => void
+  onInvalidChange?: (invalid: boolean) => void
+}) {
   const [raw, setRaw] = useState<string | null>(null)
   const invalid = raw !== null && !jsonParses(raw)
   return (
@@ -198,14 +233,16 @@ function JsonEditor({ id, value, className, onChange }: { id: string; value: unk
       spellCheck={false}
       value={raw ?? JSON.stringify(value ?? null)}
       onChange={(e) => {
-        setRaw(e.target.value)
-        try {
-          onChange(JSON.parse(e.target.value) as unknown)
-        } catch {
-          // 非法 JSON 期间不更新父状态；失焦或改合法后恢复
-        }
+        const text = e.target.value
+        setRaw(text)
+        const valid = jsonParses(text)
+        onInvalidChange?.(!valid)
+        if (valid) onChange(JSON.parse(text) as unknown)
       }}
-      onBlur={() => setRaw(null)}
+      onBlur={() => {
+        setRaw(null)
+        onInvalidChange?.(false)
+      }}
     />
   )
 }
@@ -224,8 +261,9 @@ function FieldControl(props: {
   value: unknown
   dirty: boolean
   onChange: (value: unknown) => void
+  onInvalidChange?: (invalid: boolean) => void
 }) {
-  const { field: f, value, dirty, onChange } = props
+  const { field: f, value, dirty, onChange, onInvalidChange } = props
   const className = dirty ? 'border-amber-500/60' : undefined
   const id = useId()
 
@@ -262,7 +300,9 @@ function FieldControl(props: {
       {f.type === 'stringList' && (
         <StringListInput id={id} className={className} value={value} onChange={onChange} placeholder="逗号分隔" />
       )}
-      {f.type === 'json' && <JsonEditor id={id} value={value} className={className} onChange={onChange} />}
+      {f.type === 'json' && (
+        <JsonEditor id={id} value={value} className={className} onChange={onChange} onInvalidChange={onInvalidChange} />
+      )}
       {(f.type === 'string' || f.type === 'text') && (
         f.type === 'text'
           ? <Textarea id={id} className={className} rows={2} value={String(value ?? '')} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} />
