@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { api, type HealthFriend } from '@/lib/api'
+import { csvCell } from '@/lib/csv'
 import { useSettings } from '@/lib/settings'
 
 function fmt(iso: string | null | undefined): string {
@@ -104,26 +105,22 @@ const columns = [
 ]
 
 function toCsv(friends: HealthFriend[]): string {
-  const esc = (v: unknown): string => {
-    const s = v === null || v === undefined ? '' : String(v)
-    return `"${s.replaceAll('"', '""')}"`
-  }
   const header = ['作者', '链接', 'feed', '可达', '可抓取', '反链', '延迟ms', 'HTTP状态', '最终域名', '失联起始', 'RSS不可用起始', '最近发文', '距今天数', '失败次数', '最后错误', '最后检查', '下次检查']
   const lines = friends.map((f) => {
     const s = f.state
     return [
       f.author, f.link, f.feed ?? '', s?.reachable ?? '', s?.crawlable ?? '',
-      s?.backlinkChecked ? (s.backlink ? '是' : '否') : '未检测',
+      s?.backlinkChecked ? (s.backlink === null ? '未检测' : s.backlink ? '是' : '否') : '未检测',
       s?.latencyMs ?? '', s?.httpStatus ?? '', s?.finalUrl ?? '',
       s?.unreachableSince ?? '', s?.rssUnavailableSince ?? '',
       s?.lastPostPublished ?? '', s?.lastPostDaysAgo ?? '',
       s?.failCount ?? 0, s?.lastError ?? '', s?.checkedAt ?? '', s?.nextCheckAt ?? '',
     ]
-      .map(esc)
+      .map(csvCell)
       .join(',')
   })
   // BOM 让 Excel 正确识别 UTF-8
-  return '\ufeff' + [header.map(esc).join(','), ...lines].join('\r\n')
+  return '\ufeff' + [header.map(csvCell).join(','), ...lines].join('\r\n')
 }
 
 export default function HealthPage() {

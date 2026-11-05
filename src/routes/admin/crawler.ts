@@ -2,9 +2,9 @@ import { Hono, type Context } from 'hono'
 import { jsonError, readJson } from '../../util/http'
 import { isoUtc } from '../../util/time'
 import { loadConfig } from '../../config/loader'
-import { runManualRound, runHealthRound } from '../../crawler/crawl'
+import { readRoundState, roundStatus, runManualRound, runHealthRound } from '../../crawler/crawl'
 import { extractDeclaredFeeds, commonFeedPaths } from '../../crawler/discover'
-import { fetchRemote, runtimeGet } from '../../crawler/http'
+import { fetchRemote } from '../../crawler/http'
 import { parseFeed } from '../../crawler/parse'
 import type { AppConfig, AppEnv } from '../../types'
 import { runInBackground } from '../../util/bg'
@@ -65,7 +65,7 @@ export function crawlerRoutes() {
                 latencyMs: r.latency_ms ?? null,
                 finalUrl: r.final_url ?? null,
                 backlinkChecked: r.backlink_checked === 1,
-                backlink: r.backlink_checked === 1 ? r.backlink === 1 : null,
+                backlink: r.backlink_checked === 1 ? (r.backlink === null ? null : r.backlink === 1) : null,
                 unreachableSince: isoUtc(r.unreachable_since as string) ?? null,
                 rssUnavailableSince: isoUtc(r.rss_unavailable_since as string) ?? null,
                 lastPostPublished: isoUtc(r.last_post_published as string) ?? null,
@@ -82,6 +82,8 @@ export function crawlerRoutes() {
 
   // 全量体检：waitUntil 后台跑（进度见 /crawl/status）
   app.post('/api/admin/health/run', async (c) => {
+    const busy = await roundConflict(c)
+    if (busy) return busy
     const { cfg } = await loadConfig(c.env.DB, c.env)
     if (!cfg.linkCheck.enabled) return jsonError(400, 'health_disabled', '体检总开关已关闭（linkCheck.enabled）')
     const n = await countActive(c)
@@ -97,7 +99,7 @@ export function crawlerRoutes() {
       `SELECT a.id, a.friend_id, f.author AS friend_author, a.title, a.link, a.author, a.published_at, a.fetched_at
          FROM articles a JOIN friends f ON f.id = a.friend_id
          ${filter ? 'WHERE a.friend_id = ?' : ''}
-        ORDER BY a.published_at DESC, a.id DESC
+        ORDER BY datetime(a.published_at) DESC, a.id DESC
         LIMIT 200`,
     )
     const rows = filter
@@ -126,6 +128,8 @@ export function crawlerRoutes() {
 
   // 手动全量抓取一轮（后台并发，进度见 /status）
   app.post('/api/admin/crawl', async (c) => {
+    const busy = await roundConflict(c)
+    if (busy) return busy
     const { cfg } = await loadConfig(c.env.DB, c.env)
     if (!cfg.crawl.enabled && !cfg.linkCheck.enabled) {
       return jsonError(400, 'crawl_disabled', '抓取与体检总开关均已关闭')
@@ -154,18 +158,17 @@ export function crawlerRoutes() {
   })
 
   app.get('/api/admin/crawl/status', async (c) => {
-    const round = (await runtimeGet(c.env.DB, 'internal.round')) as
-      | { kind: string; startedAt: string; done: number; total: number }
-      | null
+    const round = await readRoundState(c.env.DB)
+    const { running, stale } = roundStatus(round)
     const counts = await c.env.DB.prepare(
       `SELECT
          (SELECT COUNT(*) FROM friends WHERE status = 'active') AS active_count,
          (SELECT COUNT(*) FROM friends f LEFT JOIN source_state s ON s.friend_id = f.id
             WHERE f.status = 'active' AND (s.next_check_at IS NULL OR s.next_check_at <= datetime('now'))) AS due_count`,
     ).first<{ active_count: number; due_count: number }>()
-    const running = round !== null && round.done < round.total
     return c.json({
       running,
+      stale,
       round,
       activeCount: counts?.active_count ?? 0,
       dueCount: counts?.due_count ?? 0,
@@ -205,6 +208,13 @@ export function crawlerRoutes() {
 async function countActive(c: Context<AppEnv>): Promise<number> {
   const row = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM friends WHERE status = 'active'").first<{ n: number }>()
   return row?.n ?? 0
+}
+
+/** 手动轮转的单飞保护：未结束且未超时则拒绝新任务；stale 的旧记录允许覆盖 */
+async function roundConflict(c: Context<AppEnv>): Promise<Response | null> {
+  const round = await readRoundState(c.env.DB)
+  if (!roundStatus(round).running) return null
+  return jsonError(409, 'round_running', '已有抓取/体检任务进行中，请等待完成')
 }
 
 /** 自动探测：feed 发现（声明式 <link> 优先 + 常见路径）、站点标题、favicon、og:image */

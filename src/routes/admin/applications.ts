@@ -110,6 +110,9 @@ export function applicationRoutes() {
 
     const cfg = c.get('cfg')
     const nowDb = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    // 覆盖值为空串时回退到申请值/站点名；空作者会破坏公开接口的 author 必填契约
+    const author = overrides.author?.trim() || app_.author?.trim() || app_.site_name.trim()
+    const title = overrides.title?.trim() || app_.site_name.trim()
     // 建友链与状态翻转放进同一个 batch（原子）：中途失败不会出现「友链已建、申请仍 pending」
     const results = await c.env.DB.batch([
       c.env.DB.prepare(
@@ -117,8 +120,8 @@ export function applicationRoutes() {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
       ).bind(
         groupId,
-        overrides.author ?? app_.author ?? app_.site_name,
-        overrides.title ?? app_.site_name,
+        author,
+        title,
         overrides.desc ?? app_.desc,
         app_.link,
         overrides.feed === '' ? null : (overrides.feed ?? app_.feed),

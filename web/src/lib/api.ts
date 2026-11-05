@@ -94,7 +94,9 @@ export interface ArticleRow {
 
 export interface CrawlStatus {
   running: boolean
-  round: { kind: string; startedAt: string; done: number; total: number } | null
+  /** 上次轮转超过最长存活时间仍未结束（进程被杀/部署中断） */
+  stale: boolean
+  round: { kind: string; startedAt: string; done: number; total: number; finishedAt?: string } | null
   activeCount: number
   dueCount: number
 }

@@ -95,24 +95,80 @@ export async function runCronTick(db: Env['DB'], env: Env, cfg: AppConfig): Prom
   return summary
 }
 
-/** 手动全量抓取一轮（所有 active 源，并发受限；进度写 internal.round） */
-export async function runManualRound(db: Env['DB'], env: Env, cfg: AppConfig): Promise<void> {
-  const sources = await listActiveFriends(db)
+/** 手动轮转的最长存活时间；Worker/进程被截断后据此解除“进行中”状态 */
+export const MAX_ROUND_MS = 10 * 60_000
+
+export interface RoundState {
+  kind: string
+  startedAt: string
+  done: number
+  total: number
+  finishedAt?: string
+}
+
+/** 读取 internal.round；结构不合法时视为没有进行中的轮转 */
+export async function readRoundState(db: Env['DB']): Promise<RoundState | null> {
+  const raw = await runtimeGet(db, 'internal.round')
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const o = raw as Record<string, unknown>
+  if (typeof o.kind !== 'string' || typeof o.startedAt !== 'string') return null
+  if (typeof o.done !== 'number' || typeof o.total !== 'number') return null
+  return {
+    kind: o.kind,
+    startedAt: o.startedAt,
+    done: o.done,
+    total: o.total,
+    ...(typeof o.finishedAt === 'string' ? { finishedAt: o.finishedAt } : {}),
+  }
+}
+
+/** running 只在“未结束、未完成、未超时”时成立；stale 供 UI 判断是否需要重新开始 */
+export function roundStatus(round: RoundState | null, now = Date.now()): { running: boolean; stale: boolean } {
+  if (!round) return { running: false, stale: false }
+  const started = Date.parse(round.startedAt)
+  const stale = !round.finishedAt && (!Number.isFinite(started) || now - started > MAX_ROUND_MS)
+  const running = !round.finishedAt && round.done < round.total && !stale
+  return { running, stale }
+}
+
+async function runRound(
+  db: Env['DB'],
+  kind: 'crawl' | 'health',
+  sources: FriendRow[],
+  concurrency: number,
+  task: (friend: FriendRow) => Promise<void>,
+): Promise<void> {
   const startedAt = new Date().toISOString()
   let done = 0
   // 进度写节流：每 10% 或完成时才写，避免大列表的写放大
   const step = Math.max(1, Math.ceil(sources.length / 10))
-  await runtimeSet(db, 'internal.round', { kind: 'crawl', startedAt, done: 0, total: sources.length })
-  await runPool(sources, cfg.crawl.concurrency, async (friend) => {
-    try {
-      await crawlSource(db, env, cfg, friend)
-    } catch (e) {
-      console.error(`[crawl] friend ${friend.id} unhandled:`, e)
-    }
-    done++
-    if (done === sources.length || done % step === 0) {
-      await runtimeSet(db, 'internal.round', { kind: 'crawl', startedAt, done, total: sources.length })
-    }
+  await runtimeSet(db, 'internal.round', { kind, startedAt, done: 0, total: sources.length })
+  try {
+    await runPool(sources, concurrency, async (friend) => {
+      try {
+        await task(friend)
+      } catch (e) {
+        console.error(`[${kind}] friend ${friend.id} unhandled:`, e)
+      }
+      done++
+      if (done === sources.length || done % step === 0) {
+        await runtimeSet(db, 'internal.round', { kind, startedAt, done, total: sources.length })
+      }
+    })
+  } finally {
+    // 正常完成、异常退出都写结束标记；进程被直接杀掉时靠 MAX_ROUND_MS 判定 stale
+    await runtimeSet(db, 'internal.round', {
+      kind, startedAt, done, total: sources.length,
+      finishedAt: new Date().toISOString(),
+    })
+  }
+}
+
+/** 手动全量抓取一轮（所有 active 源，并发受限；进度写 internal.round） */
+export async function runManualRound(db: Env['DB'], env: Env, cfg: AppConfig): Promise<void> {
+  const sources = await listActiveFriends(db)
+  await runRound(db, 'crawl', sources, cfg.crawl.concurrency, async (friend) => {
+    await crawlSource(db, env, cfg, friend)
   })
 }
 
@@ -120,20 +176,8 @@ export async function runManualRound(db: Env['DB'], env: Env, cfg: AppConfig): P
 export async function runHealthRound(db: Env['DB'], env: Env, cfg: AppConfig): Promise<void> {
   const sources = await listActiveFriends(db)
   if (sources.length === 0) return
-  const startedAt = new Date().toISOString()
-  let done = 0
-  const step = Math.max(1, Math.ceil(sources.length / 10))
-  await runtimeSet(db, 'internal.round', { kind: 'health', startedAt, done: 0, total: sources.length })
-  await runPool(sources, cfg.linkCheck.concurrency, async (friend) => {
-    try {
-      await healthDiagnosis(db, env, cfg, friend)
-    } catch (e) {
-      console.error(`[health] friend ${friend.id} unhandled:`, e)
-    }
-    done++
-    if (done === sources.length || done % step === 0) {
-      await runtimeSet(db, 'internal.round', { kind: 'health', startedAt, done, total: sources.length })
-    }
+  await runRound(db, 'health', sources, cfg.linkCheck.concurrency, async (friend) => {
+    await healthDiagnosis(db, env, cfg, friend)
   })
 }
 
@@ -247,7 +291,7 @@ async function crawlRss(
     await db
       .prepare(
         `DELETE FROM articles WHERE friend_id = ? AND id NOT IN (
-           SELECT id FROM articles WHERE friend_id = ? ORDER BY published_at DESC, id DESC LIMIT ?)`,
+           SELECT id FROM articles WHERE friend_id = ? ORDER BY datetime(published_at) DESC, id DESC LIMIT ?)`,
       )
       .bind(friend.id, friend.id, cfg.crawl.maxPerFriend)
       .run()
@@ -298,12 +342,12 @@ async function markCrawlFailure(db: Env['DB'], cfg: AppConfig, friendId: number,
 
 // ── 清理 ─────────────────────────────────────────────────────────────────
 
-/** 每天一次：清理超出 retentionDays 的文章（articles.published_at 存 ISO 8601） */
+/** 每天一次：清理超出 retentionDays 的文章（用 datetime() 兼容历史空格格式） */
 export async function dailyCleanup(db: Env['DB'], cfg: AppConfig): Promise<void> {
   const last = (await runtimeGet(db, 'internal.lastCleanupAt')) as string | null
   const now = new Date()
   if (last && now.getTime() - new Date(last).getTime() < 24 * 3_600_000) return
   const cutoff = new Date(now.getTime() - cfg.crawl.retentionDays * 86_400_000).toISOString().replace(/\.\d+Z$/, 'Z')
-  await db.prepare('DELETE FROM articles WHERE published_at < ?').bind(cutoff).run()
+  await db.prepare('DELETE FROM articles WHERE datetime(published_at) < datetime(?)').bind(cutoff).run()
   await runtimeSet(db, 'internal.lastCleanupAt', now.toISOString())
 }

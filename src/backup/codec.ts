@@ -67,7 +67,8 @@ export async function decodeBackup(bytes: Uint8Array): Promise<DecodedBackup> {
   }
 
   // 版本号单独判断，给出“备份来自更新版本”的可操作提示
-  const version = (json as { version?: unknown }).version
+  // JSON 可能是 null/数组/字符串，先判对象再取属性，避免 null.version 抛 500
+  const version = json !== null && typeof json === 'object' ? (json as { version?: unknown }).version : undefined
   if (typeof version === 'number' && version > BACKUP_VERSION) {
     return {
       ok: false,

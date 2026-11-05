@@ -202,12 +202,22 @@ describe('备份恢复', () => {
 
     const articles = await env.DB.prepare('SELECT COUNT(*) AS n FROM articles').first<{ n: number }>()
     expect(articles!.n).toBe(1)
+    const article = await env.DB.prepare('SELECT published_at FROM articles').first<{ published_at: string }>()
+    // 抓取路径存 ISO；恢复不能把它改写成空格格式
+    expect(article!.published_at).toBe('2026-03-04T05:06:07Z')
     const state = await env.DB.prepare('SELECT latency_ms, backlink FROM source_state').first<{ latency_ms: number; backlink: number }>()
     expect(state).toMatchObject({ latency_ms: 321, backlink: 0 })
 
     const settings = await (await authed('/api/admin/settings')).json() as { values: Record<string, unknown> }
     expect(settings.values['ui.pageSize']).toBe(5)
     expect(settings.values['site.name']).toBe('备份测试站')
+  })
+
+  it('备份内容为 null → 400，而不是 500', async () => {
+    const res = await postBackup('/api/admin/backup/preview', 'null')
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('invalid_backup')
   })
 
   it('保留 internal.* 运行时键，不被恢复清掉', async () => {

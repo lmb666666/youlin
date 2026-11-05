@@ -95,3 +95,29 @@ describe('POST /api/admin/crawl/:friendId（单源手动抓取）', () => {
     await expect(res.json()).resolves.toEqual({ outcome: 'failed' })
   })
 })
+
+describe('手动轮转状态', () => {
+  const roundKey = "INSERT INTO settings (key, value) VALUES ('internal.round', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+
+  it('未结束且未超时 → 新任务 409', async () => {
+    await seedFriend(null)
+    await env.DB.prepare(roundKey)
+      .bind(JSON.stringify({ kind: 'crawl', startedAt: new Date().toISOString(), done: 1, total: 10 }))
+      .run()
+
+    const res = await authed('/api/admin/crawl', { method: 'POST' })
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('round_running')
+  })
+
+  it('超过最长存活时间 → running=false / stale=true', async () => {
+    await env.DB.prepare(roundKey)
+      .bind(JSON.stringify({ kind: 'crawl', startedAt: '2026-01-01T00:00:00Z', done: 1, total: 10 }))
+      .run()
+
+    const res = await authed('/api/admin/crawl/status')
+    const body = (await res.json()) as { running: boolean; stale: boolean }
+    expect(body).toMatchObject({ running: false, stale: true })
+  })
+})

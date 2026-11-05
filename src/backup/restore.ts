@@ -1,6 +1,6 @@
 import type { Env } from '../types'
 import { fieldSchemas } from '../config/schema'
-import { dbTime } from '../util/time'
+import { dbTime, isoUtc } from '../util/time'
 import { jsonError } from '../util/http'
 import type { BackupEnvelope } from './format'
 
@@ -151,7 +151,12 @@ export async function applyRestore(
           `INSERT INTO articles (friend_id, guid, title, link, author, published_at, fetched_at)
            VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))`,
         )
-        .bind(friendIdByLink.get(a.friend)!, a.guid, a.title, a.link, a.author ?? null, dbTime(a.publishedAt), a.fetchedAt ? dbTime(a.fetchedAt) : null),
+        .bind(
+          friendIdByLink.get(a.friend)!, a.guid, a.title, a.link, a.author ?? null,
+          // 抓取路径存 ISO 8601；恢复也必须保持同一格式，避免字符串排序/清理边界错乱
+          isoUtc(a.publishedAt) ?? a.publishedAt,
+          a.fetchedAt ? dbTime(a.fetchedAt) : null,
+        ),
     )
   await runChunked(articleStmts, (chunk) => db.batch(chunk))
 

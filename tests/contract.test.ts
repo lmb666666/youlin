@@ -2,10 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { SELF } from 'cloudflare:test'
 import { env } from './helpers'
 import Ajv2020 from 'ajv/dist/2020'
+import addFormats from 'ajv-formats'
 import schema from '../schemas/api-links.response.schema.json'
 import example from '../schemas/examples/api-links.example.json'
 
 const ajv = new Ajv2020({ strict: false, allErrors: true })
+addFormats(ajv)
 const validate = ajv.compile(schema as object)
 
 async function login(): Promise<string> {
@@ -159,6 +161,24 @@ describe('接口一 GET /api/links 契约', () => {
     const body2 = (await res2.json()) as { groups: { links: { author: string }[] }[] }
     expect(validate(body2)).toBe(true)
     expect(body2.groups[0]!.links.map((l) => l.author)).toContain('Hide')
+  })
+
+  it('反链 checked=1 且值为 NULL → 输出 null（未检测），不是 false', async () => {
+    const gid = await createGroup('未检测组')
+    const link = 'https://unknown-backlink.example.com/'
+    await createFriend(gid, { author: 'Unknown', title: '未知站', link, since: '2026-01-01' })
+    await env.DB.prepare(
+      `INSERT INTO source_state (friend_id, reachable, crawlable, backlink_checked, backlink, latency_ms, checked_at)
+       VALUES ((SELECT id FROM friends WHERE link = ?), 1, 1, 1, NULL, 100, '2026-10-05 13:55:00')`,
+    )
+      .bind(link)
+      .run()
+
+    const body = (await (await SELF.fetch('https://example.com/api/links')).json()) as {
+      groups: { links: { link: string; health?: { backlink: boolean | null } }[] }[]
+    }
+    const item = body.groups.flatMap((g) => g.links).find((l) => l.link === link)
+    expect(item?.health?.backlink).toBeNull()
   })
 
   it('契约示例文件本身通过 schema', () => {

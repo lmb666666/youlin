@@ -344,6 +344,91 @@ describe('导入', () => {
     const group = pub.groups.find((g) => g.name === '批量')!
     expect(group.links.map((l) => l.author)).toEqual(['甲（改名）', '乙', '丙', '丁', '戊'])
   })
+
+  it('扁平导入保留既有分组与入圈开关', async () => {
+    const g = await authed('/api/admin/groups', { method: 'POST', body: JSON.stringify({ name: '保留组' }) })
+    const { id: gid } = (await g.json()) as { id: number }
+    const created = await authed('/api/admin/friends', {
+      method: 'POST',
+      body: JSON.stringify({ groupId: gid, title: '保留站', link: 'https://keep.example/', since: '2024-01-01', inCircle: false }),
+    })
+    expect(created.status).toBe(201)
+
+    const imp = await authed('/api/admin/import', {
+      method: 'POST',
+      body: JSON.stringify([{ url: 'https://keep.example/', description: '仅更新简介' }]),
+    })
+    expect(imp.status).toBe(200)
+
+    const list = await authed('/api/admin/friends')
+    const { friends } = (await list.json()) as {
+      friends: { link: string; groupName: string; inCircle: boolean; desc?: string }[]
+    }
+    const kept = friends.find((f) => f.link === 'https://keep.example/')
+    expect(kept).toMatchObject({ groupName: '保留组', inCircle: false, desc: '仅更新简介' })
+  })
+
+  it('导出 JSON 再导入保留隐藏状态与趣称', async () => {
+    const g = await authed('/api/admin/groups', { method: 'POST', body: JSON.stringify({ name: '往返组' }) })
+    const { id: gid } = (await g.json()) as { id: number }
+    await authed('/api/admin/friends', {
+      method: 'POST',
+      body: JSON.stringify({
+        groupId: gid, title: '隐藏站', author: '隐藏作者', nickname: '趣称',
+        link: 'https://roundtrip.example/', since: '2024-02-02', status: 'hidden',
+      }),
+    })
+
+    const exp = await authed('/api/admin/export?format=json')
+    const exported = await exp.text()
+
+    const list = await authed('/api/admin/friends')
+    const { friends } = (await list.json()) as { friends: { id: number; link: string }[] }
+    const target = friends.find((f) => f.link === 'https://roundtrip.example/')!
+    await authed(`/api/admin/friends/${target.id}`, { method: 'DELETE' })
+
+    const imp = await authed('/api/admin/import', { method: 'POST', body: exported })
+    expect(imp.status).toBe(200)
+
+    const after = await authed('/api/admin/friends')
+    const restored = ((await after.json()) as { friends: { link: string; status: string; nickname?: string }[] }).friends.find(
+      (f) => f.link === 'https://roundtrip.example/',
+    )
+    expect(restored).toMatchObject({ status: 'hidden', nickname: '趣称' })
+  })
+
+  it('导入拒绝非 http(s) 的可选 URL', async () => {
+    const res = await authed('/api/admin/import', {
+      method: 'POST',
+      body: JSON.stringify([
+        { url: 'https://bad-url.example/', feed: 'javascript:alert(1)', avatar: 'javascript:alert(2)' },
+      ]),
+    })
+    const body = (await res.json()) as { imported: number; skipped: number; errors: { message: string }[] }
+    expect(res.status).toBe(200)
+    expect(body.imported).toBe(1)
+    expect(body.errors).toHaveLength(2)
+
+    const pub = (await (await SELF.fetch(`${BASE}/api/links`)).json()) as {
+      groups: { links: { link: string; feed?: string; avatar?: string }[] }[]
+    }
+    const link = pub.groups.flatMap((g) => g.links).find((l) => l.link === 'https://bad-url.example/')
+    expect(link?.feed).toBeUndefined()
+    expect(link?.avatar).toBeUndefined()
+  })
+
+  it('101 个新分组导入不触发 D1 参数上限', async () => {
+    const prefix = `Bulk${Math.random().toString(36).slice(2, 8)}`
+    const groups = Array.from({ length: 101 }, (_, i) => ({
+      name: `${prefix}-${i}`,
+      links: [{ author: `A${i}`, url: `https://${prefix.toLowerCase()}-${i}.example/` }],
+    }))
+    const res = await authed('/api/admin/import', { method: 'POST', body: JSON.stringify({ groups }) })
+    const body = (await res.json()) as { imported: number; groupsCreated: number }
+    expect(res.status).toBe(200)
+    expect(body.imported).toBe(101)
+    expect(body.groupsCreated).toBe(101)
+  })
 })
 
 describe('设置中心', () => {

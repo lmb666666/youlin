@@ -201,4 +201,20 @@ describe('重建触发', () => {
     await new Promise((r) => setTimeout(r, 50)) // 等 waitUntil 完成
     expect(calls).toContain('https://ci.example.com/hook')
   })
+
+  it('通过时清空作者/标题 → 回退申请值与站点名，不写空 author', async () => {
+    const id = await seedApplication({ siteName: '回退站', author: '原站长' })
+    const res = await authed(`/api/admin/applications/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ author: '', title: '' }),
+    })
+    expect(res.status).toBe(200)
+
+    const row = await env.DB.prepare('SELECT link FROM applications WHERE id = ?').bind(id).first<{ link: string }>()
+    const pub = (await (await SELF.fetch(`${BASE}/api/links`)).json()) as {
+      groups: { links: { link: string; author: string; title?: string }[] }[]
+    }
+    const link = pub.groups.flatMap((g) => g.links).find((l) => l.link === row!.link)
+    expect(link).toMatchObject({ author: '原站长', title: '回退站' })
+  })
 })

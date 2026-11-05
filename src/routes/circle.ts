@@ -41,7 +41,7 @@ export function publicCircleRoute() {
       `SELECT a.title, a.link, a.author, a.published_at, f.avatar
          FROM articles a JOIN friends f ON f.id = a.friend_id
         WHERE ${gate}
-        ORDER BY a.published_at DESC, a.id DESC
+        ORDER BY datetime(a.published_at) DESC, a.id DESC
         LIMIT ?`,
     )
       .bind(limit)
