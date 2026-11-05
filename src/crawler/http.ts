@@ -1,6 +1,7 @@
 import type { Env, AppConfig } from '../types'
 import { isPrivateIp } from '../util/ip'
 import { guardedDispatcher } from '../server/net'
+import { findSettingValue, setSettingValue } from '../repositories/settings'
 
 /**
  * 出站 HTTP（抓取/体检/反链/申请共用）：
@@ -156,19 +157,15 @@ export function nextIntervalHours(unreachableDays: number | null, cfg: AppConfig
 
 /** 运行时簿记（轮转进度 / 清理水位 / 重建防抖）：存 settings 表 internal.* 键，不属于应用配置 */
 export async function runtimeGet(db: Env['DB'], key: string): Promise<unknown | null> {
-  const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(key).first<{ value: string }>()
-  if (!row) return null
+  const value = findSettingValue(db, key)
+  if (value === null) return null
   try {
-    return JSON.parse(row.value) as unknown
+    return JSON.parse(value) as unknown
   } catch {
     return null
   }
 }
 
 export async function runtimeSet(db: Env['DB'], key: string, value: unknown): Promise<void> {
-  await db.prepare(
-    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-  )
-    .bind(key, JSON.stringify(value))
-    .run()
+  setSettingValue(db, key, JSON.stringify(value))
 }

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { AppConfig, AppEnv } from '../types'
 import { isoUtc, daysSince } from '../util/time'
 import { listPublicGroups } from '../repositories/links'
+import { pingDatabase } from '../repositories/health'
 import type { FriendRow, SourceStateRow } from '../server/schema'
 
 /**
@@ -80,12 +81,7 @@ export function publicRoutes() {
 
   // 健康检查：供 uptime 监控；附带数据库可达性
   app.get('/healthz', async (c) => {
-    let db = true
-    try {
-      await c.env.DB.prepare('SELECT 1').first()
-    } catch {
-      db = false
-    }
+    const db = pingDatabase(c.env.DB)
     return c.json(
       { ok: db, db },
       db ? 200 : 503,

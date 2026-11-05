@@ -4,6 +4,7 @@ import { extractDeclaredFeeds, commonFeedPaths } from './discover'
 import { fetchRemote, nextIntervalHours } from './http'
 import { daysSince, dbTime } from '../util/time'
 import { clampText } from '../util/str'
+import { persistHealthState, updateBacklink, type PriorCrawlState } from '../repositories/crawl'
 import type { FriendRow } from './crawl'
 
 /**
@@ -13,12 +14,6 @@ import type { FriendRow } from './crawl'
  *   → 首页也不可达：可选第三方状态 API 兜底（api_only，只标记可达性）
  * 反链检测：抓对方站点页面，检索是否含指向 backlink.authorUrl 的链接。
  */
-
-export interface PriorState {
-  unreachable_since: string | null
-  rss_unavailable_since: string | null
-  fail_count: number
-}
 
 export interface HealthResult {
   reachable: boolean
@@ -148,10 +143,7 @@ export async function refreshBacklink(db: Env['DB'], env: Env, cfg: AppConfig, f
   const res = await fetchRemote(env, { url: friend.link, cfg, timeoutSeconds: cfg.linkCheck.timeoutSeconds })
   if (res.status < 200 || res.status >= 300 || res.body === null) return
   const ok = htmlContainsBacklink(res.body, mine)
-  await db
-    .prepare('UPDATE source_state SET backlink_checked = 1, backlink = ? WHERE friend_id = ?')
-    .bind(ok ? 1 : 0, friend.id)
-    .run()
+  updateBacklink(db, friend.id, ok)
 }
 
 export function normalizeDomain(url: string): string | null {
@@ -182,52 +174,34 @@ export async function persistHealth(
   cfg: AppConfig,
   friendId: number,
   r: HealthResult,
-  previous: PriorState | null,
+  previous: PriorCrawlState | null,
 ): Promise<void> {
   const nowDb = dbTime(new Date().toISOString())
-  const unreachableSince = r.reachable ? null : (previous?.unreachable_since ?? nowDb)
-  const rssUnavailableSince = r.crawlable ? null : (previous?.rss_unavailable_since ?? nowDb)
-  const failCount = r.reachable ? 0 : (previous?.fail_count ?? 0) + 1
-  const unreachableDays = r.reachable ? null : (daysSince(previous?.unreachable_since) ?? 0)
+  const unreachableSince = r.reachable ? null : (previous?.unreachableSince ?? nowDb)
+  const rssUnavailableSince = r.crawlable ? null : (previous?.rssUnavailableSince ?? nowDb)
+  const failCount = r.reachable ? 0 : (previous?.failCount ?? 0) + 1
+  const unreachableDays = r.reachable ? null : (daysSince(previous?.unreachableSince) ?? 0)
   const lastPostDb = r.lastPostPublished ? dbTime(r.lastPostPublished) : null
   const lastPostDays = r.lastPostPublished
     ? Math.max(0, Math.floor((Date.now() - new Date(r.lastPostPublished).getTime()) / 86_400_000))
     : null
   const base = Math.round(nextIntervalHours(unreachableDays, cfg, cfg.linkCheck.maxAgeHours))
 
-  await db.prepare(
-    `INSERT INTO source_state (
-       friend_id, reachable, crawlable, best_method, http_status, latency_ms, final_url,
-       backlink_checked, backlink, unreachable_since, rss_unavailable_since,
-       last_post_published, last_post_days_ago, last_error, fail_count, checked_at, next_check_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now', ?))
-     ON CONFLICT(friend_id) DO UPDATE SET
-       reachable = excluded.reachable, crawlable = excluded.crawlable, best_method = excluded.best_method,
-       http_status = excluded.http_status, latency_ms = excluded.latency_ms, final_url = excluded.final_url,
-       backlink_checked = excluded.backlink_checked, backlink = excluded.backlink,
-       unreachable_since = excluded.unreachable_since, rss_unavailable_since = excluded.rss_unavailable_since,
-       last_post_published = COALESCE(excluded.last_post_published, source_state.last_post_published),
-       last_post_days_ago = COALESCE(excluded.last_post_days_ago, source_state.last_post_days_ago),
-       last_error = excluded.last_error, fail_count = excluded.fail_count,
-       checked_at = excluded.checked_at, next_check_at = excluded.next_check_at`,
-  )
-    .bind(
-      friendId,
-      r.reachable ? 1 : 0,
-      r.crawlable ? 1 : 0,
-      r.bestMethod,
-      r.httpStatus,
-      r.latencyMs,
-      clampText(r.finalUrl, 2048),
-      r.backlinkChecked ? 1 : 0,
-      r.backlink === null ? null : r.backlink ? 1 : 0,
-      unreachableSince,
-      rssUnavailableSince,
-      lastPostDb,
-      lastPostDays,
-      clampText(r.lastError, 2000),
-      failCount,
-      `+${base * 60} minutes`,
-    )
-    .run()
+  persistHealthState(db, friendId, {
+    reachable: r.reachable,
+    crawlable: r.crawlable,
+    bestMethod: r.bestMethod,
+    httpStatus: r.httpStatus,
+    latencyMs: r.latencyMs,
+    finalUrl: clampText(r.finalUrl, 2048),
+    backlinkChecked: r.backlinkChecked,
+    backlink: r.backlink,
+    unreachableSince,
+    rssUnavailableSince,
+    lastPostPublished: lastPostDb,
+    lastPostDaysAgo: lastPostDays,
+    lastError: clampText(r.lastError, 2000),
+    failCount,
+    nextModifier: `+${base * 60} minutes`,
+  })
 }

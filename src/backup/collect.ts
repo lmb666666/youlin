@@ -2,6 +2,7 @@ import type { Env } from '../types'
 import { loadFlatSettings } from '../config/loader'
 import { isoUtc } from '../util/time'
 import { APP_VERSION } from '../version'
+import { collectArticleRows, collectCoreRows, collectStateRows } from '../repositories/backup'
 import {
   BACKUP_FORMAT,
   BACKUP_VERSION,
@@ -16,84 +17,6 @@ import {
 
 /** 导出：把库内数据整理成自然键结构的备份信封 */
 
-interface GroupRow {
-  id: number
-  name: string
-  desc: string | null
-  sort: number
-}
-
-interface FriendRow {
-  id: number
-  group_id: number
-  author: string
-  nickname: string | null
-  title: string | null
-  desc: string | null
-  link: string
-  feed: string | null
-  icon: string | null
-  avatar: string | null
-  archs: string | null
-  since: string
-  comment: string | null
-  in_circle: number
-  status: string
-  sort: number
-  created_at: string | null
-}
-
-interface ApplicationRow {
-  site_name: string
-  author: string | null
-  link: string
-  avatar: string | null
-  feed: string | null
-  desc: string | null
-  contact: string | null
-  note: string | null
-  backlink_ok: number | null
-  backlink_checked_at: string | null
-  backlink_detail: string | null
-  status: string
-  review_note: string | null
-  created_at: string
-  reviewed_at: string | null
-}
-
-interface ArticleRow {
-  friend_link: string
-  guid: string
-  title: string
-  link: string
-  author: string | null
-  published_at: string
-  fetched_at: string | null
-}
-
-interface StateRow {
-  friend_link: string
-  etag: string | null
-  last_modified: string | null
-  reachable: number | null
-  crawlable: number | null
-  best_method: string | null
-  http_status: number | null
-  latency_ms: number | null
-  final_url: string | null
-  backlink_checked: number | null
-  backlink: number | null
-  unreachable_since: string | null
-  rss_unavailable_since: string | null
-  last_post_published: string | null
-  last_post_days_ago: number | null
-  last_ok_at: string | null
-  last_error: string | null
-  fail_count: number
-  next_check_at: string | null
-  checked_at: string | null
-}
-
 function str(v: string | null | undefined): string | undefined {
   return v === null || v === undefined || v === '' ? undefined : v
 }
@@ -103,50 +26,21 @@ function boolOrNull(v: number | null | undefined): boolean | null | undefined {
   return v === 1
 }
 
-function parseArchs(raw: string | null): string[] | undefined {
-  if (!raw) return undefined
-  try {
-    const arr = JSON.parse(raw) as unknown
-    if (!Array.isArray(arr)) return undefined
-    const out = arr.filter((x): x is string => typeof x === 'string')
-    return out.length > 0 ? out : undefined
-  } catch {
-    return undefined
-  }
-}
-
 export interface CollectOptions {
   includeArticles: boolean
 }
 
 export async function collectBackup(db: Env['DB'], env: Env, opts: CollectOptions): Promise<BackupEnvelope> {
-  const groupsRows = await db
-    .prepare('SELECT id, name, "desc", sort FROM groups ORDER BY sort, id')
-    .all<GroupRow>()
-  const friendsRows = await db
-    .prepare(
-      `SELECT id, group_id, author, nickname, title, "desc", link, feed, icon, avatar, archs,
-              since, comment, in_circle, status, sort, created_at
-         FROM friends ORDER BY sort, id`,
-    )
-    .all<FriendRow>()
-  const appsRows = await db
-    .prepare(
-      `SELECT site_name, author, link, avatar, feed, "desc", contact, note, backlink_ok,
-              backlink_checked_at, backlink_detail, status, review_note, created_at, reviewed_at
-         FROM applications ORDER BY created_at, id`,
-    )
-    .all<ApplicationRow>()
+  const { groups: groupsRows, friends: friendsRows, applications: appsRows } = collectCoreRows(db)
+  const groupName = new Map(groupsRows.map((g) => [g.id, g.name]))
 
-  const groupName = new Map(groupsRows.results.map((g) => [g.id, g.name]))
-
-  const friends: BackupFriend[] = friendsRows.results.map((f) => {
+  const friends: BackupFriend[] = friendsRows.map((f) => {
     const item: BackupFriend = {
-      group: groupName.get(f.group_id) ?? '未分组',
+      group: groupName.get(f.groupId) ?? '未分组',
       author: f.author,
       link: f.link,
       since: f.since,
-      inCircle: f.in_circle === 1,
+      inCircle: f.inCircle === 1,
       status: f.status === 'hidden' ? 'hidden' : 'active',
       sort: f.sort,
     }
@@ -156,9 +50,9 @@ export async function collectBackup(db: Env['DB'], env: Env, opts: CollectOption
     const feed = str(f.feed)
     const icon = str(f.icon)
     const avatar = str(f.avatar)
-    const archs = parseArchs(f.archs)
+    const archs = f.archs && f.archs.length > 0 ? f.archs : undefined
     const comment = str(f.comment)
-    const createdAt = isoUtc(f.created_at)
+    const createdAt = isoUtc(f.createdAt)
     if (nickname) item.nickname = nickname
     if (title) item.title = title
     if (desc) item.desc = desc
@@ -171,12 +65,12 @@ export async function collectBackup(db: Env['DB'], env: Env, opts: CollectOption
     return item
   })
 
-  const applications: BackupApplication[] = appsRows.results.map((a) => {
+  const applications: BackupApplication[] = appsRows.map((a) => {
     const item: BackupApplication = {
-      siteName: a.site_name,
+      siteName: a.siteName,
       link: a.link,
       status: a.status === 'approved' || a.status === 'rejected' ? a.status : 'pending',
-      createdAt: isoUtc(a.created_at) ?? a.created_at,
+      createdAt: isoUtc(a.createdAt) ?? a.createdAt,
     }
     const author = str(a.author)
     const avatar = str(a.avatar)
@@ -184,10 +78,10 @@ export async function collectBackup(db: Env['DB'], env: Env, opts: CollectOption
     const desc = str(a.desc)
     const contact = str(a.contact)
     const note = str(a.note)
-    const backlinkDetail = str(a.backlink_detail)
-    const reviewNote = str(a.review_note)
-    const backlinkCheckedAt = isoUtc(a.backlink_checked_at)
-    const reviewedAt = isoUtc(a.reviewed_at)
+    const backlinkDetail = str(a.backlinkDetail)
+    const reviewNote = str(a.reviewNote)
+    const backlinkCheckedAt = isoUtc(a.backlinkCheckedAt)
+    const reviewedAt = isoUtc(a.reviewedAt)
     if (author) item.author = author
     if (avatar) item.avatar = avatar
     if (feed) item.feed = feed
@@ -196,7 +90,7 @@ export async function collectBackup(db: Env['DB'], env: Env, opts: CollectOption
     if (note) item.note = note
     if (backlinkDetail) item.backlinkDetail = backlinkDetail
     if (reviewNote) item.reviewNote = reviewNote
-    if (a.backlink_ok !== null) item.backlinkOk = a.backlink_ok === 1
+    if (a.backlinkOk !== null) item.backlinkOk = a.backlinkOk === 1
     if (backlinkCheckedAt) item.backlinkCheckedAt = backlinkCheckedAt
     if (reviewedAt) item.reviewedAt = reviewedAt
     return item
@@ -204,7 +98,7 @@ export async function collectBackup(db: Env['DB'], env: Env, opts: CollectOption
 
   const settings = await loadFlatSettings(db, env)
 
-  const groupItems: BackupData['groups'] = groupsRows.results.map((g) => {
+  const groupItems: BackupData['groups'] = groupsRows.map((g) => {
     const item: BackupData['groups'][number] = { name: g.name, sort: g.sort }
     const desc = str(g.desc)
     if (desc) item.desc = desc
@@ -228,52 +122,35 @@ export async function collectBackup(db: Env['DB'], env: Env, opts: CollectOption
   }
 
   if (opts.includeArticles) {
-    const articlesRows = await db
-      .prepare(
-        `SELECT f.link AS friend_link, a.guid, a.title, a.link, a.author, a.published_at, a.fetched_at
-           FROM articles a JOIN friends f ON f.id = a.friend_id
-          ORDER BY a.id`,
-      )
-      .all<ArticleRow>()
-    const articles: BackupArticle[] = articlesRows.results.map((a) => {
+    const articles: BackupArticle[] = collectArticleRows(db).map((a) => {
       const item: BackupArticle = {
-        friend: a.friend_link,
+        friend: a.friendLink,
         guid: a.guid,
         title: a.title,
         link: a.link,
-        publishedAt: isoUtc(a.published_at) ?? a.published_at,
+        publishedAt: isoUtc(a.publishedAt) ?? a.publishedAt,
       }
       const author = str(a.author)
-      const fetchedAt = isoUtc(a.fetched_at)
+      const fetchedAt = isoUtc(a.fetchedAt)
       if (author) item.author = author
       if (fetchedAt) item.fetchedAt = fetchedAt
       return item
     })
     data.articles = articles
 
-    const statesRows = await db
-      .prepare(
-        `SELECT f.link AS friend_link, s.etag, s.last_modified, s.reachable, s.crawlable, s.best_method,
-                s.http_status, s.latency_ms, s.final_url, s.backlink_checked, s.backlink,
-                s.unreachable_since, s.rss_unavailable_since, s.last_post_published, s.last_post_days_ago,
-                s.last_ok_at, s.last_error, s.fail_count, s.next_check_at, s.checked_at
-           FROM source_state s JOIN friends f ON f.id = s.friend_id
-          ORDER BY f.id`,
-      )
-      .all<StateRow>()
-    const sourceState: BackupSourceState[] = statesRows.results.map((s) => {
-      const item: BackupSourceState = { friend: s.friend_link }
+    const sourceState: BackupSourceState[] = collectStateRows(db).map((s) => {
+      const item: BackupSourceState = { friend: s.friendLink }
       const etag = str(s.etag)
-      const lastModified = str(s.last_modified)
-      const bestMethod = str(s.best_method)
-      const finalUrl = str(s.final_url)
-      const unreachableSince = isoUtc(s.unreachable_since)
-      const rssUnavailableSince = isoUtc(s.rss_unavailable_since)
-      const lastPostPublished = isoUtc(s.last_post_published)
-      const lastOkAt = isoUtc(s.last_ok_at)
-      const lastError = str(s.last_error)
-      const nextCheckAt = isoUtc(s.next_check_at)
-      const checkedAt = isoUtc(s.checked_at)
+      const lastModified = str(s.lastModified)
+      const bestMethod = str(s.bestMethod)
+      const finalUrl = str(s.finalUrl)
+      const unreachableSince = isoUtc(s.unreachableSince)
+      const rssUnavailableSince = isoUtc(s.rssUnavailableSince)
+      const lastPostPublished = isoUtc(s.lastPostPublished)
+      const lastOkAt = isoUtc(s.lastOkAt)
+      const lastError = str(s.lastError)
+      const nextCheckAt = isoUtc(s.nextCheckAt)
+      const checkedAt = isoUtc(s.checkedAt)
       if (etag) item.etag = etag
       if (lastModified) item.lastModified = lastModified
       if (bestMethod) item.bestMethod = bestMethod
@@ -287,16 +164,16 @@ export async function collectBackup(db: Env['DB'], env: Env, opts: CollectOption
       if (checkedAt) item.checkedAt = checkedAt
       const reachable = boolOrNull(s.reachable)
       const crawlable = boolOrNull(s.crawlable)
-      const backlinkChecked = boolOrNull(s.backlink_checked)
+      const backlinkChecked = boolOrNull(s.backlinkChecked)
       const backlink = boolOrNull(s.backlink)
       if (reachable !== undefined) item.reachable = reachable
       if (crawlable !== undefined) item.crawlable = crawlable
       if (backlinkChecked !== undefined) item.backlinkChecked = backlinkChecked
       if (backlink !== undefined) item.backlink = backlink
-      if (s.http_status !== null) item.httpStatus = s.http_status
-      if (s.latency_ms !== null) item.latencyMs = s.latency_ms
-      if (s.last_post_days_ago !== null) item.lastPostDaysAgo = s.last_post_days_ago
-      item.failCount = s.fail_count
+      if (s.httpStatus !== null) item.httpStatus = s.httpStatus
+      if (s.latencyMs !== null) item.latencyMs = s.latencyMs
+      if (s.lastPostDaysAgo !== null) item.lastPostDaysAgo = s.lastPostDaysAgo
+      item.failCount = s.failCount
       return item
     })
     data.sourceState = sourceState

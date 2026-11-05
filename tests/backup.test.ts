@@ -212,6 +212,47 @@ describe('备份恢复', () => {
     expect(settings.values['site.name']).toBe('备份测试站')
   })
 
+  it('恢复中途失败时整体回滚，旧数据不受影响', async () => {
+    await seed()
+    await grantRestoreTicket()
+    await env.DB.exec(
+      `CREATE TRIGGER fail_restore BEFORE INSERT ON applications
+       WHEN NEW.site_name = 'BOOM' BEGIN SELECT RAISE(ABORT, 'boom'); END`,
+    )
+
+    const backup = {
+      format: 'youlin.backup',
+      version: 1,
+      exportedAt: '2026-01-01T00:00:00Z',
+      data: {
+        groups: [{ name: '新分组', sort: 0 }],
+        friends: [{
+          group: '新分组', author: '新友链', link: 'https://new.example.com/',
+          since: '2026-01-01', inCircle: true, status: 'active', sort: 0,
+        }],
+        applications: [{
+          siteName: 'BOOM', link: 'https://boom.example.com/',
+          status: 'pending', createdAt: '2026-01-01T00:00:00Z',
+        }],
+        settings: {},
+      },
+    }
+
+    try {
+      const res = await postBackup('/api/admin/backup/restore?confirm=1', JSON.stringify(backup))
+      expect(res.status).toBeGreaterThanOrEqual(500)
+
+      const groups = await env.DB.prepare('SELECT name FROM groups ORDER BY name').all<{ name: string }>()
+      expect(groups.results.map((g) => g.name)).toEqual(['技术区'])
+      const friends = await env.DB.prepare('SELECT COUNT(*) AS n FROM friends').first<{ n: number }>()
+      expect(friends!.n).toBe(2)
+      const apps = await env.DB.prepare("SELECT site_name FROM applications").all<{ site_name: string }>()
+      expect(apps.results.map((a) => a.site_name)).toEqual(['申请站'])
+    } finally {
+      await env.DB.exec('DROP TRIGGER IF EXISTS fail_restore')
+    }
+  })
+
   it('备份内容为 null → 400，而不是 500', async () => {
     const res = await postBackup('/api/admin/backup/preview', 'null')
     expect(res.status).toBe(400)

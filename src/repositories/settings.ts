@@ -1,4 +1,4 @@
-import { and, ne, notLike, sql } from 'drizzle-orm'
+import { and, eq, ne, notLike, sql } from 'drizzle-orm'
 import { getOrm } from '../server/orm'
 import { settings } from '../server/schema'
 import type { Db } from '../types'
@@ -34,4 +34,17 @@ export function replaceConfigSettings(db: Db, values: Record<string, unknown>): 
         .run()
     }
   })
+}
+
+/** 单个键的原始 JSON 文本；运行时簿记（internal.*）也走这里 */
+export function findSettingValue(db: Db, key: string): string | null {
+  return getOrm(db).select({ value: settings.value }).from(settings).where(eq(settings.key, key)).get()?.value ?? null
+}
+
+export function setSettingValue(db: Db, key: string, value: string): void {
+  getOrm(db)
+    .insert(settings)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: settings.key, set: { value: sql`excluded.value` } })
+    .run()
 }

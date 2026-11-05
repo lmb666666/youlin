@@ -1,10 +1,24 @@
 import type { Env, AppConfig } from '../types'
 import { parseFeed, withResolvedGuids } from './parse'
 import { fetchRemote, nextIntervalHours, runtimeGet, runtimeSet } from './http'
-import { checkFriendHealth, persistHealth, refreshBacklink, type PriorState } from './linkcheck'
+import { checkFriendHealth, persistHealth, refreshBacklink } from './linkcheck'
 import { dbTime, daysSince } from '../util/time'
 import { clampText } from '../util/str'
 import { runPool } from '../util/pool'
+import {
+  deleteOldArticles,
+  ensureStateRow,
+  findCrawlState,
+  findPriorCrawlState,
+  findUnreachableSince,
+  listActiveFriends,
+  markCrawlFailure as markFailureState,
+  markNotModified,
+  markRssSuccess,
+  replaceFriendArticles,
+  selectDueSources,
+  updateDiscoveredFeed,
+} from '../repositories/crawl'
 
 /**
  * 抓取器（DESIGN §6）：分批轮转，降低单次抓取压力，绝不在一个 tick 全量抓取。
@@ -31,57 +45,9 @@ export interface CrawlSummary {
 type Outcome = 'ok' | 'notModified' | 'failed' | 'skipped'
 type RssAttempt = { outcome: 'ok' | 'notModified' } | { outcome: 'failed'; error: string }
 
-const DB_NOW = "datetime('now')"
-
-export async function ensureStateRow(db: Env['DB'], friendId: number): Promise<void> {
-  await db.prepare('INSERT OR IGNORE INTO source_state (friend_id) VALUES (?)').bind(friendId).run()
-}
-
-async function loadCrawlState(db: Env['DB'], friendId: number): Promise<{ etag: string | null; last_modified: string | null } | null> {
-  return (
-    (await db
-      .prepare('SELECT etag, last_modified FROM source_state WHERE friend_id = ?')
-      .bind(friendId)
-      .first<{ etag: string | null; last_modified: string | null }>()) ?? null
-  )
-}
-
-async function loadPriorState(db: Env['DB'], friendId: number): Promise<PriorState | null> {
-  return (
-    (await db
-      .prepare('SELECT unreachable_since, rss_unavailable_since, fail_count FROM source_state WHERE friend_id = ?')
-      .bind(friendId)
-      .first<PriorState>()) ?? null
-  )
-}
-
-/** 选取本轮该抓的源：active 且 next_check_at 到期，最久未检查优先 */
-export async function selectDueSources(db: Env['DB'], limit: number): Promise<FriendRow[]> {
-  const rows = await db
-    .prepare(
-      `SELECT f.id, f.author, f.link, f.feed, f.in_circle
-         FROM friends f
-         LEFT JOIN source_state s ON s.friend_id = f.id
-        WHERE f.status = 'active'
-          AND (s.next_check_at IS NULL OR s.next_check_at <= ${DB_NOW})
-        ORDER BY s.checked_at ASC, f.id ASC
-        LIMIT ?`,
-    )
-    .bind(limit)
-    .all<{ id: number; author: string; link: string; feed: string | null; in_circle: number }>()
-  return rows.results.map((f) => ({ id: f.id, author: f.author, link: f.link, feed: f.feed, in_circle: f.in_circle }))
-}
-
-export async function listActiveFriends(db: Env['DB']): Promise<FriendRow[]> {
-  const rows = await db
-    .prepare("SELECT id, author, link, feed, in_circle FROM friends WHERE status = 'active' ORDER BY id")
-    .all<{ id: number; author: string; link: string; feed: string | null; in_circle: number }>()
-  return rows.results.map((f) => ({ id: f.id, author: f.author, link: f.link, feed: f.feed, in_circle: f.in_circle }))
-}
-
 /** Cron 一轮：取 batchSize 个到期源逐个处理 + 每日清理 */
 export async function runCronTick(db: Env['DB'], env: Env, cfg: AppConfig): Promise<CrawlSummary> {
-  const sources = await selectDueSources(db, cfg.crawl.batchSize)
+  const sources = selectDueSources(db, cfg.crawl.batchSize)
   const summary: CrawlSummary = { total: sources.length, ok: 0, notModified: 0, failed: 0, skipped: 0 }
   for (const friend of sources) {
     try {
@@ -95,7 +61,7 @@ export async function runCronTick(db: Env['DB'], env: Env, cfg: AppConfig): Prom
   return summary
 }
 
-/** 手动轮转的最长存活时间；Worker/进程被截断后据此解除“进行中”状态 */
+/** 手动轮转的最长存活时间；进程被截断后据此解除“进行中”状态 */
 export const MAX_ROUND_MS = 10 * 60_000
 
 export interface RoundState {
@@ -166,7 +132,7 @@ async function runRound(
 
 /** 手动全量抓取一轮（所有 active 源，并发受限；进度写 internal.round） */
 export async function runManualRound(db: Env['DB'], env: Env, cfg: AppConfig): Promise<void> {
-  const sources = await listActiveFriends(db)
+  const sources = listActiveFriends(db)
   await runRound(db, 'crawl', sources, cfg.crawl.concurrency, async (friend) => {
     await crawlSource(db, env, cfg, friend)
   })
@@ -174,7 +140,7 @@ export async function runManualRound(db: Env['DB'], env: Env, cfg: AppConfig): P
 
 /** 手动全量体检（三路 + 反链） */
 export async function runHealthRound(db: Env['DB'], env: Env, cfg: AppConfig): Promise<void> {
-  const sources = await listActiveFriends(db)
+  const sources = listActiveFriends(db)
   if (sources.length === 0) return
   await runRound(db, 'health', sources, cfg.linkCheck.concurrency, async (friend) => {
     await healthDiagnosis(db, env, cfg, friend)
@@ -188,10 +154,10 @@ export async function runHealthRound(db: Env['DB'], env: Env, cfg: AppConfig): P
  *   无 feed → 完整体检（含 feed 发现，发现即写回 friends.feed）
  */
 export async function crawlSource(db: Env['DB'], env: Env, cfg: AppConfig, friend: FriendRow): Promise<Outcome> {
-  await ensureStateRow(db, friend.id)
+  ensureStateRow(db, friend.id)
 
   if (friend.feed && cfg.crawl.enabled) {
-    const attempt = await crawlRss(db, env, cfg, friend, await loadCrawlState(db, friend.id))
+    const attempt = await crawlRss(db, env, cfg, friend, findCrawlState(db, friend.id))
     if (attempt.outcome !== 'failed') {
       if (cfg.backlink.enabled) await refreshBacklink(db, env, cfg, friend)
       return attempt.outcome
@@ -208,16 +174,13 @@ export async function crawlSource(db: Env['DB'], env: Env, cfg: AppConfig, frien
 
 /** 完整体检单源：三路 + 反链 + 写回 + feed 发现自动落库 */
 async function healthDiagnosis(db: Env['DB'], env: Env, cfg: AppConfig, friend: FriendRow): Promise<Outcome> {
-  await ensureStateRow(db, friend.id)
-  const prior = await loadPriorState(db, friend.id)
+  ensureStateRow(db, friend.id)
+  const prior = findPriorCrawlState(db, friend.id)
   const result = await checkFriendHealth(env, cfg, friend)
   await persistHealth(db, cfg, friend.id, result, prior)
   // 「未指定则自动探测」（PLAN §6.1）：仅在 feed 为空时写回，不覆盖人工配置
   if (!friend.feed && result.discoveredFeed) {
-    await db
-      .prepare("UPDATE friends SET feed = ?, updated_at = datetime('now') WHERE id = ? AND feed IS NULL")
-      .bind(result.discoveredFeed, friend.id)
-      .run()
+    updateDiscoveredFeed(db, friend.id, result.discoveredFeed)
   }
   return result.reachable ? 'ok' : 'failed'
 }
@@ -229,11 +192,11 @@ async function crawlRss(
   env: Env,
   cfg: AppConfig,
   friend: FriendRow,
-  state: { etag: string | null; last_modified: string | null } | null,
+  state: { etag: string | null; lastModified: string | null } | null,
 ): Promise<RssAttempt> {
   const headers: Record<string, string> = {}
   if (state?.etag) headers['If-None-Match'] = state.etag
-  if (state?.last_modified) headers['If-Modified-Since'] = state.last_modified
+  if (state?.lastModified) headers['If-Modified-Since'] = state.lastModified
 
   const res = await fetchRemote(env, {
     url: friend.feed!,
@@ -244,15 +207,7 @@ async function crawlRss(
 
   if (res.status === 304) {
     const base = Math.round(nextIntervalHours(null, cfg, cfg.linkCheck.maxAgeHours))
-    await db
-      .prepare(
-        `UPDATE source_state SET reachable = 1, crawlable = 1, best_method = 'rss', fail_count = 0,
-                unreachable_since = NULL, rss_unavailable_since = NULL, last_ok_at = ${DB_NOW},
-                checked_at = ${DB_NOW}, next_check_at = datetime('now', ?), latency_ms = ?
-          WHERE friend_id = ?`,
-      )
-      .bind(`+${base * 60} minutes`, res.latencyMs, friend.id)
-      .run()
+    markNotModified(db, friend.id, `+${base * 60} minutes`, res.latencyMs)
     return { outcome: 'notModified' }
   }
 
@@ -273,71 +228,31 @@ async function crawlRss(
     .sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : -1))
 
   if (friend.in_circle === 1) {
-    const keep = valid.slice(0, cfg.crawl.maxPerFriend)
-    if (keep.length > 0) {
-      await db.batch(
-        keep.map((e) =>
-          db
-            .prepare(
-              `INSERT INTO articles (friend_id, guid, title, link, author, published_at)
-               VALUES (?, ?, ?, ?, ?, ?)
-               ON CONFLICT(friend_id, guid) DO UPDATE SET
-                 title = excluded.title, link = excluded.link, author = excluded.author, published_at = excluded.published_at`,
-            )
-            .bind(friend.id, e.guid, e.title, e.link, e.author, e.publishedAt),
-        ),
-      )
-    }
-    await db
-      .prepare(
-        `DELETE FROM articles WHERE friend_id = ? AND id NOT IN (
-           SELECT id FROM articles WHERE friend_id = ? ORDER BY datetime(published_at) DESC, id DESC LIMIT ?)`,
-      )
-      .bind(friend.id, friend.id, cfg.crawl.maxPerFriend)
-      .run()
+    replaceFriendArticles(db, friend.id, valid.slice(0, cfg.crawl.maxPerFriend), cfg.crawl.maxPerFriend)
   }
 
   const lastPost = valid[0]?.publishedAt ?? null
   const lastPostDays = lastPost ? Math.max(0, Math.floor((now - new Date(lastPost).getTime()) / 86_400_000)) : null
   const base = Math.round(nextIntervalHours(null, cfg, cfg.linkCheck.maxAgeHours))
 
-  await db
-    .prepare(
-      `UPDATE source_state SET reachable = 1, crawlable = 1, best_method = 'rss', http_status = ?, latency_ms = ?,
-              final_url = ?, etag = ?, last_modified = ?, rss_unavailable_since = NULL,
-              last_post_published = COALESCE(?, last_post_published),
-              last_post_days_ago = COALESCE(?, last_post_days_ago),
-              last_ok_at = ${DB_NOW}, last_error = NULL, fail_count = 0, unreachable_since = NULL,
-              checked_at = ${DB_NOW}, next_check_at = datetime('now', ?)
-        WHERE friend_id = ?`,
-    )
-    .bind(
-      res.status, res.latencyMs, clampText(res.finalUrl, 2048), clampText(res.headers.get('etag'), 500),
-      clampText(res.headers.get('last-modified'), 100),
-      lastPost ? dbTime(lastPost) : null, lastPostDays,
-      `+${base * 60} minutes`, friend.id,
-    )
-    .run()
+  markRssSuccess(db, friend.id, {
+    httpStatus: res.status,
+    latencyMs: res.latencyMs,
+    finalUrl: res.finalUrl ? clampText(res.finalUrl, 2048) : null,
+    etag: clampText(res.headers.get('etag'), 500),
+    lastModified: clampText(res.headers.get('last-modified'), 100),
+    lastPostPublished: lastPost ? dbTime(lastPost) : null,
+    lastPostDaysAgo: lastPostDays,
+    nextModifier: `+${base * 60} minutes`,
+  })
   return { outcome: 'ok' }
 }
 
 /** 体检关闭时的最简失败落账（无法确认站点可达性，按失联处理并退避） */
 async function markCrawlFailure(db: Env['DB'], cfg: AppConfig, friendId: number, error: string): Promise<void> {
-  const row = await db
-    .prepare('SELECT unreachable_since FROM source_state WHERE friend_id = ?')
-    .bind(friendId)
-    .first<{ unreachable_since: string | null }>()
-  const unreachableDays = daysSince(row?.unreachable_since) ?? 0
+  const unreachableDays = daysSince(findUnreachableSince(db, friendId)) ?? 0
   const base = Math.round(nextIntervalHours(unreachableDays, cfg, cfg.linkCheck.maxAgeHours))
-  await db
-    .prepare(
-      `UPDATE source_state SET reachable = 0, crawlable = 0, last_error = ?, fail_count = fail_count + 1,
-              unreachable_since = COALESCE(unreachable_since, ${DB_NOW}), checked_at = ${DB_NOW},
-              next_check_at = datetime('now', ?)
-        WHERE friend_id = ?`,
-    )
-    .bind(clampText(error, 2000), `+${base * 60} minutes`, friendId)
-    .run()
+  markFailureState(db, friendId, clampText(error, 2000), `+${base * 60} minutes`)
 }
 
 // ── 清理 ─────────────────────────────────────────────────────────────────
@@ -348,6 +263,6 @@ export async function dailyCleanup(db: Env['DB'], cfg: AppConfig): Promise<void>
   const now = new Date()
   if (last && now.getTime() - new Date(last).getTime() < 24 * 3_600_000) return
   const cutoff = new Date(now.getTime() - cfg.crawl.retentionDays * 86_400_000).toISOString().replace(/\.\d+Z$/, 'Z')
-  await db.prepare('DELETE FROM articles WHERE datetime(published_at) < datetime(?)').bind(cutoff).run()
+  deleteOldArticles(db, cutoff)
   await runtimeSet(db, 'internal.lastCleanupAt', now.toISOString())
 }

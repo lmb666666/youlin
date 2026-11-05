@@ -8,6 +8,15 @@ import { fetchRemote } from '../../crawler/http'
 import { parseFeed } from '../../crawler/parse'
 import type { AppConfig, AppEnv } from '../../types'
 import { runInBackground } from '../../util/bg'
+import {
+  countActiveFriends,
+  countDueFriends,
+  deleteArticle,
+  findActiveFriend,
+  findFriendBrief,
+  listAdminArticles,
+  listHealthSources,
+} from '../../repositories/crawl'
 
 /**
  * 抓取/体检/文章的管理 API（DESIGN §5）：
@@ -22,13 +31,6 @@ import { runInBackground } from '../../util/bg'
  *   POST /api/admin/friends/probe        自动探测（表单预保存：body { link, feed? }）
  */
 
-interface FriendBrief {
-  id: number
-  author: string
-  link: string
-  feed: string | null
-}
-
 interface ProbeResult {
   feed?: string
   title?: string
@@ -40,41 +42,37 @@ export function crawlerRoutes() {
   const app = new Hono<AppEnv>()
 
   app.get('/api/admin/health', async (c) => {
-    const rows = await c.env.DB.prepare(
-      `SELECT f.id, f.author, f.title, f.link, f.feed, f.in_circle, f.status, s.*
-         FROM friends f LEFT JOIN source_state s ON s.friend_id = f.id
-        ORDER BY CASE WHEN s.reachable = 0 THEN 0 ELSE 1 END, s.next_check_at ASC, f.id ASC`,
-    ).all<Record<string, unknown>>()
+    const rows = listHealthSources(c.env.DB)
     return c.json({
-      friends: rows.results.map((r) => ({
-        id: r.id,
-        author: r.author,
-        title: r.title ?? undefined,
-        link: r.link,
-        feed: r.feed ?? undefined,
-        inCircle: r.in_circle === 1,
-        status: r.status,
+      friends: rows.map(({ friend: f, state: s }) => ({
+        id: f.id,
+        author: f.author,
+        title: f.title ?? undefined,
+        link: f.link,
+        feed: f.feed ?? undefined,
+        inCircle: f.inCircle === 1,
+        status: f.status,
         state:
-          r.checked_at == null
+          s?.checkedAt == null
             ? null
             : {
-                reachable: r.reachable == null ? null : r.reachable === 1,
-                crawlable: r.crawlable == null ? null : r.crawlable === 1,
-                bestMethod: r.best_method ?? null,
-                httpStatus: r.http_status ?? null,
-                latencyMs: r.latency_ms ?? null,
-                finalUrl: r.final_url ?? null,
-                backlinkChecked: r.backlink_checked === 1,
-                backlink: r.backlink_checked === 1 ? (r.backlink === null ? null : r.backlink === 1) : null,
-                unreachableSince: isoUtc(r.unreachable_since as string) ?? null,
-                rssUnavailableSince: isoUtc(r.rss_unavailable_since as string) ?? null,
-                lastPostPublished: isoUtc(r.last_post_published as string) ?? null,
-                lastPostDaysAgo: r.last_post_days_ago ?? null,
-                lastOkAt: isoUtc(r.last_ok_at as string) ?? null,
-                lastError: r.last_error ?? null,
-                failCount: r.fail_count ?? 0,
-                nextCheckAt: isoUtc(r.next_check_at as string) ?? null,
-                checkedAt: isoUtc(r.checked_at as string) ?? null,
+                reachable: s.reachable == null ? null : s.reachable === 1,
+                crawlable: s.crawlable == null ? null : s.crawlable === 1,
+                bestMethod: s.bestMethod ?? null,
+                httpStatus: s.httpStatus ?? null,
+                latencyMs: s.latencyMs ?? null,
+                finalUrl: s.finalUrl ?? null,
+                backlinkChecked: s.backlinkChecked === 1,
+                backlink: s.backlinkChecked === 1 ? (s.backlink === null ? null : s.backlink === 1) : null,
+                unreachableSince: isoUtc(s.unreachableSince) ?? null,
+                rssUnavailableSince: isoUtc(s.rssUnavailableSince) ?? null,
+                lastPostPublished: isoUtc(s.lastPostPublished) ?? null,
+                lastPostDaysAgo: s.lastPostDaysAgo ?? null,
+                lastOkAt: isoUtc(s.lastOkAt) ?? null,
+                lastError: s.lastError ?? null,
+                failCount: s.failCount ?? 0,
+                nextCheckAt: isoUtc(s.nextCheckAt) ?? null,
+                checkedAt: isoUtc(s.checkedAt) ?? null,
               },
       })),
     })
@@ -86,7 +84,7 @@ export function crawlerRoutes() {
     if (busy) return busy
     const { cfg } = await loadConfig(c.env.DB, c.env)
     if (!cfg.linkCheck.enabled) return jsonError(400, 'health_disabled', '体检总开关已关闭（linkCheck.enabled）')
-    const n = await countActive(c)
+    const n = countActiveFriends(c.env.DB)
     if (n === 0) return c.json({ started: 0 })
     runInBackground(c, runHealthRound(c.env.DB, c.env, cfg))
     return c.json({ started: n })
@@ -95,26 +93,17 @@ export function crawlerRoutes() {
   app.get('/api/admin/articles', async (c) => {
     const friendId = Number(c.req.query('friendId'))
     const filter = Number.isInteger(friendId) && friendId > 0
-    const stmt = c.env.DB.prepare(
-      `SELECT a.id, a.friend_id, f.author AS friend_author, a.title, a.link, a.author, a.published_at, a.fetched_at
-         FROM articles a JOIN friends f ON f.id = a.friend_id
-         ${filter ? 'WHERE a.friend_id = ?' : ''}
-        ORDER BY datetime(a.published_at) DESC, a.id DESC
-        LIMIT 200`,
-    )
-    const rows = filter
-      ? await stmt.bind(friendId).all<Record<string, unknown>>()
-      : await stmt.all<Record<string, unknown>>()
+    const rows = listAdminArticles(c.env.DB, filter ? friendId : undefined)
     return c.json({
-      articles: rows.results.map((r) => ({
+      articles: rows.map((r) => ({
         id: r.id,
-        friendId: r.friend_id,
-        friendAuthor: r.friend_author,
+        friendId: r.friendId,
+        friendAuthor: r.friendAuthor,
         title: r.title,
         link: r.link,
         author: r.author ?? undefined,
-        publishedAt: isoUtc(r.published_at as string),
-        fetchedAt: isoUtc(r.fetched_at as string),
+        publishedAt: isoUtc(r.publishedAt),
+        fetchedAt: isoUtc(r.fetchedAt),
       })),
     })
   })
@@ -122,7 +111,7 @@ export function crawlerRoutes() {
   app.delete('/api/admin/articles/:id', async (c) => {
     const id = Number(c.req.param('id'))
     if (!Number.isInteger(id)) return jsonError(400, 'invalid_id', 'id 不合法')
-    await c.env.DB.prepare('DELETE FROM articles WHERE id = ?').bind(id).run()
+    deleteArticle(c.env.DB, id)
     return c.json({ ok: true })
   })
 
@@ -134,7 +123,7 @@ export function crawlerRoutes() {
     if (!cfg.crawl.enabled && !cfg.linkCheck.enabled) {
       return jsonError(400, 'crawl_disabled', '抓取与体检总开关均已关闭')
     }
-    const n = await countActive(c)
+    const n = countActiveFriends(c.env.DB)
     if (n === 0) return c.json({ started: 0 })
     runInBackground(c, runManualRound(c.env.DB, c.env, cfg))
     return c.json({ started: n })
@@ -144,9 +133,7 @@ export function crawlerRoutes() {
   app.post('/api/admin/crawl/:friendId', async (c) => {
     const friendId = Number(c.req.param('friendId'))
     if (!Number.isInteger(friendId)) return jsonError(400, 'invalid_id', 'id 不合法')
-    const friend = await c.env.DB.prepare('SELECT id, author, link, feed, in_circle FROM friends WHERE id = ? AND status = ?')
-      .bind(friendId, 'active')
-      .first<FriendBrief & { in_circle: number }>()
+    const friend = findActiveFriend(c.env.DB, friendId)
     if (!friend) return jsonError(404, 'not_found', '友链不存在或未启用')
     const { cfg } = await loadConfig(c.env.DB, c.env)
     if (!cfg.crawl.enabled && !cfg.linkCheck.enabled) {
@@ -160,18 +147,12 @@ export function crawlerRoutes() {
   app.get('/api/admin/crawl/status', async (c) => {
     const round = await readRoundState(c.env.DB)
     const { running, stale } = roundStatus(round)
-    const counts = await c.env.DB.prepare(
-      `SELECT
-         (SELECT COUNT(*) FROM friends WHERE status = 'active') AS active_count,
-         (SELECT COUNT(*) FROM friends f LEFT JOIN source_state s ON s.friend_id = f.id
-            WHERE f.status = 'active' AND (s.next_check_at IS NULL OR s.next_check_at <= datetime('now'))) AS due_count`,
-    ).first<{ active_count: number; due_count: number }>()
     return c.json({
       running,
       stale,
       round,
-      activeCount: counts?.active_count ?? 0,
-      dueCount: counts?.due_count ?? 0,
+      activeCount: countActiveFriends(c.env.DB),
+      dueCount: countDueFriends(c.env.DB),
     })
   })
 
@@ -192,9 +173,7 @@ export function crawlerRoutes() {
   app.post('/api/admin/friends/:id/probe', async (c) => {
     const id = Number(c.req.param('id'))
     if (!Number.isInteger(id)) return jsonError(400, 'invalid_id', 'id 不合法')
-    const friend = await c.env.DB.prepare('SELECT id, author, link, feed FROM friends WHERE id = ?')
-      .bind(id)
-      .first<FriendBrief>()
+    const friend = findFriendBrief(c.env.DB, id)
     if (!friend) return jsonError(404, 'not_found', '友链不存在')
     const { cfg } = await loadConfig(c.env.DB, c.env)
     const probe = await runProbe(c.env, cfg, { link: friend.link, feed: friend.feed })
@@ -203,11 +182,6 @@ export function crawlerRoutes() {
   })
 
   return app
-}
-
-async function countActive(c: Context<AppEnv>): Promise<number> {
-  const row = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM friends WHERE status = 'active'").first<{ n: number }>()
-  return row?.n ?? 0
 }
 
 /** 手动轮转的单飞保护：未结束且未超时则拒绝新任务；stale 的旧记录允许覆盖 */
