@@ -9,3 +9,7 @@ allowBuilds:
   better-sqlite3: true
   esbuild: true
   workerd: true
+
+# 传递依赖安全修复：ESLint 的 minimatch 10.x 有 ReDoS 公告（>=11.0.1 修复）
+overrides:
+  minimatch: ^11.0.1
