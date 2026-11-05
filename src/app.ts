@@ -15,6 +15,15 @@ import { adminRoutes } from './routes/admin'
 
 export const app = new Hono<AppEnv>()
 
+// 基础安全响应头（静态资源在 Node assets.ts / Workers _headers 里单独处理）
+app.use('*', async (c, next) => {
+  await next()
+  c.res.headers.set('X-Content-Type-Options', 'nosniff')
+  c.res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+  c.res.headers.set('X-Frame-Options', 'DENY')
+  c.res.headers.set('Content-Security-Policy', "frame-ancestors 'none'")
+})
+
 // 每请求装配配置（默认值 ← settings 表 ← 环境变量覆盖，见 DESIGN §9）
 // 注意 /apply（申请接口）同样需要配置（文案、开关、Turnstile）
 const withConfig: MiddlewareHandler<AppEnv> = async (c, next) => {
@@ -29,6 +38,9 @@ app.route('/', publicRoutes())
 app.route('/', publicCircleRoute())
 app.route('/', applyRoutes())
 app.route('/', adminRoutes())
+
+// 尾斜杠统一回到申请页（Workers assets 的 SPA fallback 会把 /apply/ 渲染成管理台）
+app.get('/apply/', (c) => c.redirect('/apply', 308))
 
 // 静态资源之外的未知路径：JSON 404（Workers 由 assets 兜底；Node 由 assets.ts 兜底 HTML）
 app.notFound((c) => c.json({ error: { code: 'not_found', message: '接口不存在' } }, 404))

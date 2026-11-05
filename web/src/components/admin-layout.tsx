@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { Cable, DatabaseBackup, Inbox, LayoutDashboard, Link2, LogOut, Monitor, Moon, Rss, HeartPulse, Settings, Sun, UserRoundPlus } from 'lucide-react'
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { SettingsProvider, useSettings } from '@/lib/settings'
 import { useTheme } from '@/lib/theme'
 
@@ -37,13 +37,22 @@ function AdminLayoutInner() {
   const location = useLocation()
   const { theme, setTheme } = useTheme()
   const settings = useSettings()
-  const [checked, setChecked] = useState(false)
+  const [auth, setAuth] = useState<'checking' | 'ok' | 'error'>('checking')
+
+  const checkAuth = useCallback(() => {
+    setAuth('checking')
+    api('/api/admin/me')
+      .then(() => setAuth('ok'))
+      .catch((err) => {
+        // 401 已由 api() 跳转登录页，避免错误页闪一下
+        if (err instanceof ApiError && err.status === 401) return
+        setAuth('error')
+      })
+  }, [])
 
   useEffect(() => {
-    api('/api/admin/me')
-      .then(() => setChecked(true))
-      .catch(() => {})
-  }, [])
+    checkAuth()
+  }, [checkAuth])
 
   // ui.theme：浏览器无显式选择时，采用服务端设置（本地偏好优先）
   useEffect(() => {
@@ -67,7 +76,15 @@ function AdminLayoutInner() {
     }
   }, [settings])
 
-  if (!checked) return null
+  if (auth === 'checking') return null
+  if (auth === 'error') {
+    return (
+      <div className="flex min-h-svh flex-col items-center justify-center gap-3 p-6 text-center">
+        <p className="text-sm text-muted-foreground">无法连接管理 API，请检查服务是否正常。</p>
+        <Button variant="outline" onClick={checkAuth}>重试</Button>
+      </div>
+    )
+  }
 
   const ThemeIcon = THEME_ICON[theme]
 

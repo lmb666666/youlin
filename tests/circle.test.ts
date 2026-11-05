@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { SELF } from 'cloudflare:test'
 import Ajv2020 from 'ajv/dist/2020'
+import addFormats from 'ajv-formats'
 import { env } from './helpers'
 import schema from '../schemas/api-circle.response.schema.json'
 import example from '../schemas/examples/api-circle.example.json'
 
 const ajv = new Ajv2020({ strict: false, allErrors: true })
+addFormats(ajv)
 const validate = ajv.compile(schema as object)
 
 beforeEach(async () => {

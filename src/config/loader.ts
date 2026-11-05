@@ -50,7 +50,26 @@ function sanitize(flat: FlatSettings, source: string): FlatSettings {
   return out
 }
 
+// 每个请求都读全量 settings（59 行）会在免费 D1 额度下形成明显读放大；
+// 用 per-isolate 短 TTL 缓存，设置写入后立即失效，多 isolate 最坏延迟 5 秒。
+let cache: { key: string; at: number; flat: FlatSettings } | null = null
+let cacheMs = 5_000
+
+export function setConfigCacheMs(ms: number): void {
+  cacheMs = Math.max(0, ms)
+  cache = null
+}
+
+export function invalidateConfigCache(): void {
+  cache = null
+}
+
 export async function loadFlatSettings(db: Env['DB'], env: Env): Promise<FlatSettings> {
+  const cacheKey = env.YOULIN_CONFIG_OVERRIDES ?? ''
+  if (cache && cache.key === cacheKey && Date.now() - cache.at < cacheMs) {
+    return { ...cache.flat }
+  }
+
   let merged = defaultsFlat()
 
   // 第二层：D1 settings 表
@@ -73,6 +92,7 @@ export async function loadFlatSettings(db: Env['DB'], env: Env): Promise<FlatSet
     merged = { ...merged, ...sanitize(overrides, 'YOULIN_CONFIG_OVERRIDES') }
   }
 
+  if (cacheMs > 0) cache = { key: cacheKey, at: Date.now(), flat: merged }
   return merged
 }
 

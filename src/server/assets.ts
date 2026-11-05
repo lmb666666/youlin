@@ -69,6 +69,17 @@ function cacheControl(pathname: string): string {
   return 'public, max-age=3600'
 }
 
+const SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-Frame-Options': 'DENY',
+  'Content-Security-Policy': "frame-ancestors 'none'",
+}
+
+function textResponse(body: string, status: number, headers: Record<string, string> = {}): Response {
+  return new Response(body, { status, headers: { ...SECURITY_HEADERS, ...headers } })
+}
+
 function fileResponse(file: string, pathname: string, st: fs.Stats, headOnly: boolean, ifNoneMatch: string | null): Response {
   const etag = `W/"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`
   if (ifNoneMatch === etag) return new Response(null, { status: 304, headers: { ETag: etag } })
@@ -79,6 +90,7 @@ function fileResponse(file: string, pathname: string, st: fs.Stats, headOnly: bo
     'Cache-Control': cacheControl(pathname),
     ETag: etag,
     'Last-Modified': st.mtime.toUTCString(),
+    ...SECURITY_HEADERS,
   }
   if (headOnly) return new Response(null, { headers })
   return new Response(fs.readFileSync(file), { headers })
@@ -95,12 +107,12 @@ export function createFetchHandler(root: string, appFetch: FetchFn): FetchFn {
     if (isAppPath(url.pathname)) return appFetch(request, env, ctx)
 
     if (request.method !== 'GET' && request.method !== 'HEAD') {
-      return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'GET, HEAD' } })
+      return textResponse('Method Not Allowed', 405, { Allow: 'GET, HEAD' })
     }
 
     const headOnly = request.method === 'HEAD'
     const pathname = safeDecode(url.pathname)
-    if (pathname === null) return new Response('Bad Request', { status: 400 })
+    if (pathname === null) return textResponse('Bad Request', 400)
 
     if (pathname !== '/') {
       const file = resolveInside(rootResolved, pathname)
@@ -110,15 +122,14 @@ export function createFetchHandler(root: string, appFetch: FetchFn): FetchFn {
       }
       // 带扩展名的未知文件按 404 处理，不让 SPA 把缺失的静态资源渲染成 HTML
       if (path.extname(pathname) !== '') {
-        return new Response('Not Found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+        return textResponse('Not Found', 404, { 'Content-Type': 'text/plain; charset=utf-8' })
       }
     }
 
     const st = statFile(indexPath)
     if (!st) {
-      return new Response('前端构建产物缺失：请先运行 pnpm build（web/dist）', {
-        status: 500,
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      return textResponse('前端构建产物缺失：请先运行 pnpm build（web/dist）', 500, {
+        'Content-Type': 'text/plain; charset=utf-8',
       })
     }
     return fileResponse(indexPath, '/', st, headOnly, request.headers.get('if-none-match'))

@@ -400,7 +400,7 @@ export default function BackupPage() {
           <Separator className="my-1" />
           <p className="text-xs text-muted-foreground">
             自动备份与云端恢复在开启 WebDAV 后可用；同一目录保留最近 {status?.backup.retain ?? 7} 份，
-            恢复前存档不会被自动清理。
+            恢复前存档保留 30 天，在下次 WebDAV 备份时清理。
           </p>
         </CardContent>
       </Card>

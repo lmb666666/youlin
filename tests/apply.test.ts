@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { SELF } from 'cloudflare:test'
 import Ajv2020 from 'ajv/dist/2020'
+import addFormats from 'ajv-formats'
 import { env } from './helpers'
 import schema from '../schemas/api-apply.response.schema.json'
 import example from '../schemas/examples/api-apply.example.json'
 
 const ajv = new Ajv2020({ strict: false, allErrors: true })
+addFormats(ajv)
 const validate = ajv.compile(schema as object)
 
 const BASE = 'https://example.com'
@@ -64,6 +66,12 @@ describe('接口三 GET /apply（申请页）', () => {
     expect(/name="author"[^>]*required/.test(html)).toBe(false)
   })
 
+  it('apply.intro 为空时回退到 site.description', async () => {
+    await setSettings({ 'apply.intro': '', 'site.description': '来自站点简介的说明' })
+    const html = await (await SELF.fetch(`${BASE}/apply`)).text()
+    expect(html).toContain('来自站点简介的说明')
+  })
+
   it('apply.enabled=0 → 显示停用提示，不渲染表单', async () => {
     await setSettings({ 'apply.enabled': false })
     const html = await (await SELF.fetch(`${BASE}/apply`)).text()
@@ -97,6 +105,44 @@ describe('接口三 GET /apply（申请页）', () => {
     expect(res.headers.get('access-control-allow-methods')).toContain('POST')
     expect(res.headers.get('access-control-allow-headers')).toContain('Content-Type')
   })
+
+  it('合法 accentColor 同时覆盖浅色/深色默认值', async () => {
+    await setSettings({ 'ui.accentColor': '#ff0000' })
+    const html = await (await SELF.fetch(`${BASE}/apply`)).text()
+    const light = html.indexOf('--accent:#18181b')
+    const dark = html.indexOf('--accent:#fafafa')
+    const custom = html.lastIndexOf('--accent:#ff0000')
+    expect(light).toBeGreaterThanOrEqual(0)
+    expect(dark).toBeGreaterThan(light)
+    expect(custom).toBeGreaterThan(dark)
+  })
+
+  it('site.url 非 http(s) 时不渲染返回链接', async () => {
+    await setSettings({ 'site.url': 'javascript:alert(1)' })
+    const html = await (await SELF.fetch(`${BASE}/apply`)).text()
+    expect(html).not.toContain('href="javascript:')
+    expect(html).not.toContain('← 返回')
+  })
+
+  it('Turnstile 开启但缺 siteKey → 提示且不渲染必败表单', async () => {
+    await setSettings({ 'apply.turnstile': true, 'apply.turnstileSiteKey': '' })
+    const html = await (await SELF.fetch(`${BASE}/apply`)).text()
+    expect(html).toContain('人机验证未配置')
+    expect(html).not.toContain('id="apply-form"')
+  })
+
+  it('申请页带基础安全响应头', async () => {
+    const res = await SELF.fetch(`${BASE}/apply`)
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(res.headers.get('x-frame-options')).toBe('DENY')
+    expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+  })
+
+  it('/apply/ 重定向到 /apply', async () => {
+    const res = await SELF.fetch(`${BASE}/apply/`, { redirect: 'manual' })
+    expect(res.status).toBe(308)
+    expect(res.headers.get('location')).toBe('/apply')
+  })
 })
 
 describe('接口三 POST /apply（提交）', () => {
@@ -119,6 +165,13 @@ describe('接口三 POST /apply（提交）', () => {
       backlink_detail: string
     }>()
     expect(row).toMatchObject({ site_name: '新朋友', status: 'pending', backlink_ok: 1 })
+  })
+
+  it('请求体超过 64KB → 413，不进入 JSON 校验', async () => {
+    const res = await post({ ...VALID, note: 'x'.repeat(100 * 1024) })
+    expect(res.status).toBe(413)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('payload_too_large')
   })
 
   it('契约示例文件本身通过 schema', () => {

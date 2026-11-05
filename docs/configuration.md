@@ -40,9 +40,7 @@
 | `site.name` | `我的博客` | 站点名称。管理台与申请页标题。 |
 | `site.url` | 空 | 主站地址。反链检测的目标，如 https://example.com |
 | `site.logo` | 空 | 站点 Logo。申请页显示（可选）。 |
-| `site.description` | 空 | 站点简介。申请页副标题（可选）。 |
-| `site.timezone` | `Asia/Shanghai` | 时区。管理台与申请页的时间显示。 |
-| `site.locale` | `zh-CN` | 界面语言。当前仅 zh-CN（英文计划 v1.1）。 |
+| `site.description` | 空 | 站点简介。申请页说明的默认值（apply.intro 留空时使用）。 |
 
 ### 朋友圈抓取（`crawl.*`）
 
@@ -103,8 +101,8 @@
 | `apply.turnstileSiteKey` | 空 | Turnstile Site Key。公开值，密钥放 TURNSTILE_SECRET。 |
 | `apply.backlinkPolicy` | `mark` | 反链策略（mark / reject / off）。mark 仅标记 / reject 未检测到反链即拒绝 / off 不检测。 |
 | `apply.autoApprove` | `false` | 自动通过。提交即入库（不推荐，垃圾提交无人工拦截）。 |
-| `apply.requiredFields` | `["siteName","link"]` | 必填字段。申请表单的必填字段。 |
-| `apply.intro` | 空 | 申请页说明。留空使用内置文案。 |
+| `apply.requiredFields` | `["siteName","link"]` | 必填字段。申请表单的必填字段（link 始终必填）。 |
+| `apply.intro` | 空 | 申请页说明。留空依次回退到站点简介/内置文案。 |
 | `apply.successMessage` | 空 | 提交成功提示。留空使用内置文案。 |
 
 ### 接口（`api.*`）

@@ -6,6 +6,7 @@ import { collectBackup } from '../../backup/collect'
 import { BACKUP_MAX_BYTES, decodeBackup, gzipBytes } from '../../backup/codec'
 import { backupFileName } from '../../backup/format'
 import { applyRestore } from '../../backup/restore'
+import { invalidateConfigCache } from '../../config/loader'
 import { readBackupStatus, recordBackupStatus } from '../../backup/status'
 import { runWebdavBackup } from '../../backup/run'
 import { BACKUP_FILE_PATTERN, WebDavError, redactWebdavUrl, webdavClientFor, webdavReady } from '../../backup/webdav'
@@ -133,6 +134,7 @@ export function backupRoutes() {
 
     const outcome = await applyRestore(c.env.DB, decoded.envelope)
     if (!outcome.ok) return outcome.response
+    invalidateConfigCache()
     return c.json({ ok: true, summary: outcome.summary, preRestoreFile })
   })
 
@@ -231,6 +233,7 @@ export function backupRoutes() {
 
     const outcome = await applyRestore(c.env.DB, decoded.envelope)
     if (!outcome.ok) return outcome.response
+    invalidateConfigCache()
     return c.json({ ok: true, summary: outcome.summary, preRestoreFile: pre.status.file ?? null })
   })
 

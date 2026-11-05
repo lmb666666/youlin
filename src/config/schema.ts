@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { CONFIG_FIELDS, CONFIG_GROUPS, CONFIG_VERSION, type ConfigField, type ConfigGroup } from './definition'
+import { httpUrl } from '../util/validate'
 
 /**
  * 由 CONFIG_FIELDS 派生：
@@ -7,7 +8,15 @@ import { CONFIG_FIELDS, CONFIG_GROUPS, CONFIG_VERSION, type ConfigField, type Co
  *  - settingsJsonSchema：GET /api/admin/settings/schema 输出，前端据此渲染表单
  */
 
+/** 需要协议校验的配置项；其余 string 保持宽松（可为空/域名/前缀） */
+const SPECIAL_SCHEMAS: Record<string, z.ZodType> = {
+  'site.url': z.union([z.literal(''), httpUrl]),
+  'site.logo': z.union([z.literal(''), httpUrl, z.string().regex(/^\/[^/]/, '站内路径需以 / 开头')]),
+}
+
 function fieldZod(f: ConfigField): z.ZodType {
+  const special = SPECIAL_SCHEMAS[f.key]
+  if (special) return special
   switch (f.type) {
     case 'boolean':
       return z.boolean()

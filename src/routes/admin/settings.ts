@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { jsonError, fieldDetails, readJson } from '../../util/http'
 import { settingsZod, settingsSchemaPayload, fieldSchemas } from '../../config/schema'
 import { CONFIG_VERSION } from '../../config/definition'
-import { loadFlatSettings } from '../../config/loader'
+import { invalidateConfigCache, loadFlatSettings } from '../../config/loader'
 import type { AppEnv } from '../../types'
 
 export function settingsRoutes() {
@@ -43,6 +43,7 @@ export function settingsRoutes() {
         ).bind(k, JSON.stringify(v)),
       ),
     )
+    invalidateConfigCache()
     const flat = await loadFlatSettings(c.env.DB, c.env)
     return c.json({ version: CONFIG_VERSION, values: flat })
   })
@@ -70,6 +71,7 @@ export function settingsRoutes() {
           .bind(k, JSON.stringify(v)),
       ),
     ])
+    invalidateConfigCache()
     const flat = await loadFlatSettings(c.env.DB, c.env)
     return c.json({ version: CONFIG_VERSION, values: flat })
   })

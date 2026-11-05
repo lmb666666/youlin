@@ -16,6 +16,11 @@ export function adminRoutes() {
   const app = new Hono<AppEnv>()
 
   app.use('/api/admin/*', requireAdmin)
+  // 管理数据（申请联系方式、设置、备份）不应被浏览器/代理缓存
+  app.use('/api/admin/*', async (c, next) => {
+    await next()
+    c.res.headers.set('Cache-Control', 'no-store')
+  })
   app.route('/', loginRoutes())
   app.route('/', groupRoutes())
   app.route('/', friendRoutes())

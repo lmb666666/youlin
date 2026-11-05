@@ -24,6 +24,16 @@ function cssColor(value: string): string {
   return cleaned.length <= 64 ? cleaned : ''
 }
 
+/** 只允许 http(s) 跳转；防止设置导入把 site.url 写成 javascript: */
+function safeHttpUrl(value: string): string {
+  try {
+    const u = new URL(value)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? value : ''
+  } catch {
+    return ''
+  }
+}
+
 interface FieldSpec {
   name: string
   label: string
@@ -47,14 +57,16 @@ const TOP_LINKS = ['siteName', 'link', 'author', 'avatar', 'feed']
 
 export function renderApplyPage(cfg: AppConfig): string {
   const siteName = esc(cfg.site.name || '我的博客')
-  const intro = esc(cfg.apply.intro || DEFAULT_INTRO)
+  const intro = esc(cfg.apply.intro || cfg.site.description || DEFAULT_INTRO)
   const success = cfg.apply.successMessage || DEFAULT_SUCCESS
   const required = new Set(cfg.apply.requiredFields)
   const disabled = !cfg.apply.enabled
   const turnstileEnabled = cfg.apply.turnstile
   const siteKey = cfg.apply.turnstileSiteKey
   const turnstileReady = turnstileEnabled && siteKey !== ''
-  const siteUrl = cfg.site.url || ''
+  // Turnstile 开着但没有 siteKey 时页面根本拿不到 token，不要渲染一个必然失败的提交表单
+  const formUnavailable = disabled || (turnstileEnabled && !turnstileReady)
+  const siteUrl = safeHttpUrl(cfg.site.url || '')
   const logo = cfg.site.logo
   const accent = cssColor(cfg.ui.accentColor)
 
@@ -72,12 +84,10 @@ export function renderApplyPage(cfg: AppConfig): string {
 
   const turnstileBlock = turnstileReady
     ? `<div class="cf-turnstile" data-sitekey="${esc(siteKey)}" data-theme="auto"></div>`
-    : turnstileEnabled
-      ? `<p class="notice">人机验证未配置，暂无法提交。</p>`
-      : ''
+    : ''
 
-  const body = disabled
-    ? `<p class="notice">友链申请通道当前未开放。</p>`
+  const body = formUnavailable
+    ? `<p class="notice">${disabled ? '友链申请通道当前未开放。' : '人机验证未配置，暂无法提交。'}</p>`
     : `<form id="apply-form" novalidate>
 ${fieldHtml}
 ${turnstileBlock}
@@ -85,7 +95,7 @@ ${turnstileBlock}
 <div id="result" class="result" hidden></div>
 </form>`
 
-  const turnstileScript = turnstileEnabled
+  const turnstileScript = turnstileReady
     ? `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`
     : ''
 
@@ -99,8 +109,9 @@ ${turnstileBlock}
 <title>友链申请 · ${siteName}</title>
 ${turnstileScript}
 <style>
-:root{${accent ? `--accent:${accent};` : ''}--bg:#f6f7f9;--card:#fff;--text:#18181b;--muted:#71717a;--border:#e4e4e7;--accent:#18181b;--accent-fg:#fafafa;--err:#dc2626;--ok:#16a34a}
+:root{--bg:#f6f7f9;--card:#fff;--text:#18181b;--muted:#71717a;--border:#e4e4e7;--accent:#18181b;--accent-fg:#fafafa;--err:#dc2626;--ok:#16a34a}
 @media (prefers-color-scheme:dark){:root{--bg:#0a0a0a;--card:#18181b;--text:#fafafa;--muted:#a1a1aa;--border:#27272a;--accent:#fafafa;--accent-fg:#18181b;--err:#f87171;--ok:#4ade80}}
+${accent ? `:root{--accent:${accent};}` : ''}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 ui-sans-serif,system-ui,"PingFang SC","Microsoft YaHei",sans-serif;display:flex;justify-content:center;padding:32px 16px}
 .card{width:100%;max-width:560px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:28px}

@@ -9,6 +9,7 @@ import { SqliteD1 } from '../../src/server/db'
 import { applyMigrations } from '../../src/server/migrations'
 import { createEnv } from '../../src/server/env'
 import { gunzipBytes } from '../../src/backup/codec'
+import { setConfigCacheMs } from '../../src/config/loader'
 import { runScheduledJobs } from '../../src/jobs'
 import type { Env } from '../../src/types'
 
@@ -27,6 +28,7 @@ let cookie: string
 
 beforeAll(() => {
   process.env.ADMIN_TOKEN = TOKEN
+  setConfigCacheMs(0)
 })
 
 beforeEach(async () => {
@@ -198,10 +200,13 @@ describe('Node 上的应用', () => {
       expect(spa.status).toBe(200)
       expect(spa.headers.get('content-type')).toContain('text/html')
       expect(spa.headers.get('cache-control')).toBe('no-cache')
+      expect(spa.headers.get('x-content-type-options')).toBe('nosniff')
+      expect(spa.headers.get('x-frame-options')).toBe('DENY')
 
       const asset = await handler(new Request('http://local/assets/app-abc123.js'), env)
       expect(asset.status).toBe(200)
       expect(asset.headers.get('cache-control')).toContain('immutable')
+      expect(asset.headers.get('x-content-type-options')).toBe('nosniff')
 
       const missingAsset = await handler(new Request('http://local/assets/nope.js'), env)
       expect(missingAsset.status).toBe(404)

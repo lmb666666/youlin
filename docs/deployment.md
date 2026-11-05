@@ -115,7 +115,7 @@ compose 的端口默认就只绑本机（`127.0.0.1:8787:8787`），只让反代
 
 用 Nginx 的话，转发到 `127.0.0.1:8787` 并开启 gzip；记得带上 `proxy_set_header Host $host` 和 `proxy_set_header X-Forwarded-Proto $scheme`——会话 Cookie 会根据它决定是否加 `Secure`。
 
-反代场景下限流按 `X-Forwarded-For` 的最后一档识别真实来源 IP（由可信代理追加）；直连场景直接取 socket 地址，伪造头无效。
+反代场景下限流按 `X-Forwarded-For` 的最后一档识别真实来源 IP（由可信代理追加）；直连场景直接取 socket 地址，伪造头无效。Node 运行时不采信客户端可伪造的 `CF-Connecting-IP`（该头只在 Workers 上由 Cloudflare 注入）。
 
 ### 4. 升级
 
