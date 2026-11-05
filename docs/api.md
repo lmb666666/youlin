@@ -172,7 +172,7 @@
 **自建表单示例**
 
 ```js
-const res = await fetch('https://your-instance.workers.dev/apply', {
+const res = await fetch('https://links.example.com/apply', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({

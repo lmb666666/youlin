@@ -4,25 +4,25 @@
 
 | 层 | 位置 | 谁改 | 说明 |
 | --- | --- | --- | --- |
-| 部署级 | `wrangler.jsonc` + Secrets | 部署者（一次性） | D1 绑定、Cron 表达式、`ADMIN_TOKEN`、`TURNSTILE_SECRET`、`GITHUB_PAT` |
-| 应用级 | D1 `settings` 表（管理台「设置」页可视化编辑） | 管理员（随时） | 下方全部业务配置 |
+| 部署级 | `.env` / 容器环境变量 | 部署者（一次性） | `ADMIN_TOKEN`、`TURNSTILE_SECRET`、`GITHUB_PAT`、`WEBDAV_PASSWORD` 等 |
+| 应用级 | SQLite `settings` 表（管理台「设置」页可视化编辑） | 管理员（随时） | 下方全部业务配置 |
 | 覆盖级 | 环境变量 `YOULIN_CONFIG_OVERRIDES`（JSON 文本） | 自动化部署 | 可覆盖任意应用级配置 |
 
 - **每个配置项都有默认值**，部署后开箱即用；管理台「设置」页由配置 schema 自动渲染，支持导出/导入。
 - 覆盖级示例（把主站地址与缓存时间固定，不受管理台误改影响）：
 
   ```bash
-  wrangler secret put YOULIN_CONFIG_OVERRIDES
-  # 粘贴：{"site.url":"https://example.com","api.cacheSeconds":600}
+  YOULIN_CONFIG_OVERRIDES='{"site.url":"https://example.com","api.cacheSeconds":600}'
   ```
 
-## 部署级（Secrets）
+## 部署级（环境变量）
 
 | 名称 | 必填 | 说明 |
 | --- | --- | --- |
 | `ADMIN_TOKEN` | 是 | 管理台登录口令。建议 `openssl rand -hex 32` 生成；登录时使用。 |
 | `TURNSTILE_SECRET` | 否 | Cloudflare Turnstile 的 Secret Key。启用申请页人机验证（`apply.turnstile`）时需要，与 `apply.turnstileSiteKey` 配对。 |
 | `GITHUB_PAT` | 否 | GitHub fine-grained PAT（仅单仓库、只给 dispatch 权限）。仅在 `rebuild.provider = github_dispatch` 时需要。 |
+| `WEBDAV_PASSWORD` | 否 | WebDAV 备份密码；地址与用户名在设置页配置。 |
 
 ## 应用级配置
 
@@ -46,7 +46,7 @@
 
 ### 朋友圈抓取（`crawl.*`）
 
-分批轮转，适配 Workers 免费额度。
+分批轮转，降低单次抓取压力。
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |

@@ -1,6 +1,6 @@
 # 备份与恢复
 
-备份是一个版本化 JSON 信封（`.json.gz`），用**自然键**关联数据：友链以链接、分组以名称、文章与体检状态以所属友链的链接。因此同一个文件可以在任意实例上恢复，不需要 id 对齐，也不区分 Cloudflare 与 Docker。
+备份是一个版本化 JSON 信封（`.json.gz`），用**自然键**关联数据：友链以链接、分组以名称、文章与体检状态以所属友链的链接。因此同一个文件可以在任意实例上恢复，不需要 id 对齐，也不依赖 SQLite 文件格式。
 
 ## 备份包含什么
 
@@ -46,7 +46,7 @@
 | WebDAV 用户名 | 空 | Basic 认证用户名 |
 | WebDAV 目录 | `youlin` | 相对于地址的子目录，不存在会自动创建 |
 
-**密码只从密钥读取**：Cloudflare 用 `wrangler secret put WEBDAV_PASSWORD`（或控制台 Variables and Secrets），Docker 写进 `.env` 的 `WEBDAV_PASSWORD`。密码不写数据库、不进入任何备份文件。
+**密码只从环境变量读取**：写进 `.env` 的 `WEBDAV_PASSWORD`，不写数据库、不进入任何备份文件。
 
 自动备份的检查挂在每 5 分钟的定时任务上：抓取轮转结束后，如果距上次尝试已超过周期就上传一份；失败也会记录尝试时间，避免反复重试打爆 WebDAV。结果在备份页显示（时间、目标、大小或错误）。
 
@@ -54,7 +54,7 @@
 
 ## 实例迁移
 
-Cloudflare ↔ Docker 双向都可以：
+Docker 实例之间可以直接迁移；从 v0.3.0 Workers 迁移见[归档说明](archive/workers.md)：
 
 1. 在旧实例导出备份（建议勾选「包含文章与体检状态」，这样朋友圈内容也一起搬走）。
 2. 在新实例登录，备份页选择文件恢复。
@@ -64,17 +64,18 @@ Docker 实例的数据库在命名卷 `youlin_youlin-data`（容器内 `/data/yo
 
 ## 已知限制
 
-- **D1 单次调用的子请求上限**：Cloudflare 免费版对单次请求的子请求数有限制，特别大的备份（例如上万条申请）可能在恢复中途失败。恢复是幂等的，重试即可；更大的数据量建议在 Docker 实例上恢复。
 - **恢复会覆盖设置**：包括 `site.url` 这类实例相关配置，恢复后按需在设置页改回。
 - **不支持合并导入**：恢复是整体替换。若只想导入友链，用「导入」页的 JSON 批量导入（按链接去重、可重复执行）。
 - **版本向后兼容**：更新版本导出的备份会被旧实例拒绝并提示升级；旧备份可以在新版本恢复。
 
 ## 本地调试
 
-`wrangler dev` 只会把 `.dev.vars` 里、同时声明在 `wrangler.jsonc` 的 `secrets.required` 中的键注入到本地环境。WebDAV 密码是可选密钥，所以本地要显式传：
+Node 运行时直接读取 `.env`（已存在的环境变量优先）。WebDAV 密码写在同一文件：
 
 ```bash
-pnpm dev -- --var WEBDAV_PASSWORD:本地密码
+cp .env.example .env
+# 编辑 .env：ADMIN_TOKEN、WEBDAV_PASSWORD
+pnpm dev
 ```
 
 本地也可以指向一个测试用 WebDAV（例如局域网里的 Alist），把设置页的地址改成 `http://` 地址即可。

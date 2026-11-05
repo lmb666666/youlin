@@ -75,7 +75,7 @@
 接口返回 JSON：时间为 ISO 8601 UTC，字段为 camelCase，CORS 全开。
 
 ```js
-const { groups } = await (await fetch('https://你的实例.workers.dev/api/links')).json()
+const { groups } = await (await fetch('https://links.example.com/api/links')).json()
 // groups[].links[] 里有 author / link / avatar / feed / health，直接拿渲染
 ```
 
@@ -132,20 +132,9 @@ const { groups } = await (await fetch('https://你的实例.workers.dev/api/link
 
 ## 快速上手 | Quick Start
 
-### 部署到 Cloudflare
-
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lmb666666/youlin)
-
-1. 点击上方按钮，按提示连接 GitHub 账号（Cloudflare 会把仓库复制一份到你名下，用于自动部署）
-2. 填写管理口令（用 `openssl rand -hex 32` 生成一个随机值），数据库名保持默认
-3. 构建命令与部署命令会自动填好（`pnpm run build` / `pnpm run deploy`），保持默认并点击创建。部署命令里包含数据库迁移，建表随首次部署自动完成
-4. 等构建结束，打开 `https://<项目名>.<你的子域>.workers.dev/admin` 登录，在设置中填写主站地址
-
-不想连接 Git 账号的话，也可以用命令行部署（见[部署指南](docs/deployment.md)）；自定义域名与版本升级同样在指南里。
-
 ### 部署到自己的服务器（Docker）
 
-适合希望大陆访问更快的场景。镜像是 Node 运行时 + SQLite，数据放在命名卷里，升级只换镜像。
+镜像是 Node 24 + SQLite，数据放在命名卷里，升级只换镜像。
 
 ```bash
 cp .env.example .env      # 填 ADMIN_TOKEN（openssl rand -hex 32）
@@ -153,22 +142,22 @@ docker compose up -d      # 拉取 ghcr.io/lmb666666/youlin:latest
 ```
 
 打开 `http://<服务器>:8787/admin` 登录即可。镜像同时提供 amd64 / arm64；升级用 `docker compose pull && docker compose up -d`。
-反向代理、HTTPS、备份与数据迁移见[部署指南](docs/deployment.md#docker自建服务器) 与[备份与恢复](docs/backup.md)。
+反向代理、HTTPS、备份与数据迁移见[部署指南](docs/deployment.md) 与[备份与恢复](docs/backup.md)。
 
 ### 本地开发
 
 ```bash
 pnpm install
-cp .dev.vars.example .dev.vars   # 本地口令，随便填
-pnpm seed                        # 可选：塞入示例数据
-pnpm dev                         # http://127.0.0.1:8787/admin
+cp .env.example .env      # 本地口令，随便填
+pnpm seed                 # 可选：应用迁移并写入示例数据
+pnpm dev                  # http://127.0.0.1:8787/admin
 ```
 
-本地开发不需要 Cloudflare 账号，D1 使用本地模拟。
+本地开发只需要 Node 24 和 pnpm，数据库是本地 SQLite 文件（默认 `data/youlin.db`）。
 
 ## 文档 | Documentation
 
-- [部署指南](docs/deployment.md)：Cloudflare 与 Docker 部署、自定义域名、升级、常见问题
+- [部署指南](docs/deployment.md)：Docker 部署、反向代理、升级、常见问题
 - [备份与恢复](docs/backup.md)：备份格式、WebDAV 自动备份、覆盖式恢复与实例迁移
 - [接口文档](docs/api.md)：三个接口的字段、参数和错误码
 - [配置参考](docs/configuration.md)：全部配置项和默认值
