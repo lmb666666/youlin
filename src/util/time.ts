@@ -39,7 +39,7 @@ export function dbTime(iso: string): string {
   return iso.slice(0, 19).replace('T', ' ')
 }
 
-/** 距今整数天（按 UTC 日历日向下取整） */
+/** 距今完整 24 小时周期数（向下取整；用于失联退避，不按日历日切分） */
 export function daysSince(iso: string | null | undefined, now = Date.now()): number | undefined {
   const t = isoUtc(iso)
   if (!t) return undefined
