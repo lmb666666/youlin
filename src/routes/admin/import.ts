@@ -122,6 +122,9 @@ function normalizeItem(raw: unknown, fallbackGroup: string | null, index: number
   const hasInCircle = Object.prototype.hasOwnProperty.call(item, 'inCircle')
   const inCircle = hasInCircle ? !FALSY.has(item.inCircle) : undefined
   const status = item.status === 'active' || item.status === 'hidden' ? item.status : undefined
+  const sinceRaw = pickString(item, ALIASES.since)
+  const since = sinceRaw ? dateOnly(sinceRaw) : undefined
+  if (sinceRaw && !since) errors.push({ index, message: 'since 不是合法日期（YYYY-MM-DD）' })
 
   return {
     group: pickString(item, ALIASES.group) ?? fallbackGroup ?? undefined,
@@ -135,7 +138,7 @@ function normalizeItem(raw: unknown, fallbackGroup: string | null, index: number
     icon: pickHttpUrl(item, ALIASES.icon, index, 'icon', errors),
     avatar: pickHttpUrl(item, ALIASES.avatar, index, 'avatar', errors),
     archs: pickArchs(item),
-    since: dateOnly(pickString(item, ALIASES.since) ?? undefined) ?? dateOnly(new Date())!,
+    since: since ?? dateOnly(new Date())!,
     comment: pickString(item, ALIASES.comment),
     inCircle,
     status,

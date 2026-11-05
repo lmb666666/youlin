@@ -1,9 +1,9 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { jsonError, fieldDetails, readJson } from '../../util/http'
-import { settingsZod, settingsSchemaPayload, fieldSchemas } from '../../config/schema'
+import { settingsImportZod, settingsSchemaPayload, fieldSchemas } from '../../config/schema'
 import { CONFIG_VERSION } from '../../config/definition'
-import { invalidateConfigCache, loadFlatSettings } from '../../config/loader'
+import { defaultsFlat, invalidateConfigCache, loadFlatSettings } from '../../config/loader'
 import type { AppEnv } from '../../types'
 
 export function settingsRoutes() {
@@ -59,11 +59,12 @@ export function settingsRoutes() {
     if (unknownKeys.length > 0) {
       return jsonError(400, 'unknown_keys', '存在未知配置键', { keys: unknownKeys })
     }
-    const parsed = settingsZod.safeParse(incoming)
+    const parsed = settingsImportZod.safeParse(incoming)
     if (!parsed.success) {
       return jsonError(400, 'validation_failed', '配置校验失败', fieldDetails(parsed.error.issues))
     }
-    const entries = Object.entries(parsed.data)
+    // 旧版导出的文件可能缺少后续新增的键：缺失项回退默认值，其余按键替换
+    const entries = Object.entries({ ...defaultsFlat(), ...parsed.data })
     await c.env.DB.batch([
       c.env.DB.prepare("DELETE FROM settings WHERE key != ? AND key NOT LIKE 'internal.%'").bind('settings.schemaVersion'),
       ...entries.map(([k, v]) =>

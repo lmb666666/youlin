@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { env } from './helpers'
 import { CONFIG_FIELDS, CONFIG_KEYS, CONFIG_TOP_KEYS } from '../src/config/definition'
-import { settingsZod, settingsSchemaPayload, fieldSchemas, toNested } from '../src/config/schema'
+import { settingsImportZod, settingsZod, settingsSchemaPayload, fieldSchemas, toNested } from '../src/config/schema'
 import { loadFlatSettings, defaultsFlat } from '../src/config/loader'
 import { isMissingTableError } from '../src/util/http'
+import { dateOnly } from '../src/util/time'
+import { dateYMD } from '../src/util/validate'
 import type { AppConfig } from '../src/types'
 
 beforeEach(async () => {
@@ -47,6 +49,20 @@ describe('配置定义（DESIGN §9 完整性）', () => {
     expect(fieldSchemas['site.logo']!.safeParse('/logo.svg').success).toBe(true)
     expect(fieldSchemas['site.logo']!.safeParse('data:image/png;base64,AAAA').success).toBe(true)
     expect(fieldSchemas['site.logo']!.safeParse('javascript:alert(1)').success).toBe(false)
+  })
+
+  it('设置导入允许缺键，但拒绝未知键', () => {
+    expect(settingsImportZod.safeParse({ 'site.name': '旧版' }).success).toBe(true)
+    expect(settingsImportZod.safeParse({ 'nope.key': 1 }).success).toBe(false)
+    expect(settingsImportZod.safeParse({ 'crawl.batchSize': 'x' }).success).toBe(false)
+  })
+
+  it('日期字段拒绝不存在的日历日', () => {
+    expect(dateYMD.safeParse('2024-02-29').success).toBe(true)
+    expect(dateYMD.safeParse('2024-02-30').success).toBe(false)
+    expect(dateYMD.safeParse('2024-13-01').success).toBe(false)
+    expect(dateOnly('2024-02-30')).toBeUndefined()
+    expect(dateOnly('2024-02-29')).toBe('2024-02-29')
   })
 
   it('schema payload 覆盖全部键', () => {

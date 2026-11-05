@@ -61,8 +61,11 @@ const shape = Object.fromEntries(CONFIG_FIELDS.map((f) => [f.key, fieldZod(f)]))
 /** 按键取用的 zod 表（PUT /settings 只校验提交的键） */
 export const fieldSchemas = shape as Record<string, z.ZodType>
 
-/** 严格校验：未知键、类型不符都报错（settings import 整表替换用） */
+/** 严格校验：未知键、类型不符都报错（完整配置对象用） */
 export const settingsZod = z.object(shape).strict()
+
+/** 设置导入：允许旧版导出缺少后续新增的键（缺失项回退默认值），未知键仍拒绝 */
+export const settingsImportZod = z.object(shape).partial().strict()
 
 export type FlatSettings = Record<string, unknown>
 

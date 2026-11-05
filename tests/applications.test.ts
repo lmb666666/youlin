@@ -202,6 +202,21 @@ describe('重建触发', () => {
     expect(calls).toContain('https://ci.example.com/hook')
   })
 
+  it('通过前去重覆盖尾斜杠等价写法', async () => {
+    const id = await seedApplication({ siteName: '斜杠站', link: 'https://slash-dup.example/' })
+    const g = await authed('/api/admin/groups', { method: 'POST', body: JSON.stringify({ name: '斜杠组' }) })
+    const { id: gid } = (await g.json()) as { id: number }
+    await authed('/api/admin/friends', {
+      method: 'POST',
+      body: JSON.stringify({ groupId: gid, title: '斜杠站', link: 'https://slash-dup.example', since: '2024-01-01' }),
+    })
+
+    const res = await authed(`/api/admin/applications/${id}/approve`, { method: 'POST', body: '{}' })
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('duplicate_link')
+  })
+
   it('通过时清空作者/标题 → 回退申请值与站点名，不写空 author', async () => {
     const id = await seedApplication({ siteName: '回退站', author: '原站长' })
     const res = await authed(`/api/admin/applications/${id}/approve`, {

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isRealYMD } from './time'
 
 /** http(s) URL */
 export const httpUrl = z
@@ -16,4 +17,7 @@ export const httpUrl = z
     { message: '链接需以 http:// 或 https:// 开头' },
   )
 
-export const dateYMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式须为 YYYY-MM-DD')
+export const dateYMD = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式须为 YYYY-MM-DD')
+  .refine(isRealYMD, '日期不存在')

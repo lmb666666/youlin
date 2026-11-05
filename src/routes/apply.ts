@@ -48,7 +48,7 @@ function nonEmpty(v: unknown): boolean {
 }
 
 /** link 的等价写法（尾斜杠差异不应绕过去重） */
-function linkVariants(link: string): string[] {
+export function linkVariants(link: string): string[] {
   const noSlash = link.replace(/\/+$/, '')
   return [...new Set([link, noSlash, noSlash + '/'])]
 }
@@ -59,7 +59,11 @@ async function verifyTurnstile(env: Env, secret: string, token: string, ip: stri
   form.append('response', token)
   if (ip !== 'local') form.append('remoteip', ip)
   try {
-    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form })
+    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      body: form,
+      signal: AbortSignal.timeout(10_000),
+    })
     if (!res.ok) return false
     const data = (await res.json()) as { success?: boolean }
     return data.success === true

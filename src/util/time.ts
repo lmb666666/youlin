@@ -12,13 +12,25 @@ export function isoUtc(value: string | null | undefined): string | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
+/** 校验 YYYY-MM-DD 是真实存在的日历日（拒绝 2024-02-30 / 2024-13-01） */
+export function isRealYMD(value: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!m) return false
+  const year = Number(m[1])
+  const month = Number(m[2])
+  const day = Number(m[3])
+  const d = new Date(Date.UTC(year, month - 1, day))
+  return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day
+}
+
 /** 任意时间 → YYYY-MM-DD（UTC） */
 export function dateOnly(value: string | number | Date | null | undefined): string | undefined {
   if (value === null || value === undefined || value === '') return undefined
-  const d = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(d.getTime())) {
-    return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return isRealYMD(value) ? value : undefined
   }
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return undefined
   return d.toISOString().slice(0, 10)
 }
 

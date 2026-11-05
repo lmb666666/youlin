@@ -2,9 +2,9 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { jsonError, readJson } from '../../util/http'
 import { isoUtc, dateOnly } from '../../util/time'
-import { httpUrl } from '../../util/validate'
+import { dateYMD, httpUrl } from '../../util/validate'
 import { triggerRebuild } from '../../rebuild'
-import { ensureGroupByName } from '../apply'
+import { ensureGroupByName, linkVariants } from '../apply'
 import type { AppEnv } from '../../types'
 
 /**
@@ -67,7 +67,7 @@ const approveSchema = z
     // 与 friends 表单同一校验口径（httpUrl），放行 javascript: 等任意 scheme 会流入公开接口
     feed: z.union([httpUrl, z.literal('')]).optional(),
     avatar: z.union([httpUrl, z.literal('')]).optional(),
-    since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    since: dateYMD.optional(),
     rebuild: z.boolean().optional(),
   })
   .strict()
@@ -101,7 +101,12 @@ export function applicationRoutes() {
     if (!app_) return jsonError(404, 'not_found', '申请不存在')
     if (app_.status !== 'pending') return jsonError(409, 'already_reviewed', `该申请已处理（${app_.status}）`)
 
-    const dup = await c.env.DB.prepare('SELECT id FROM friends WHERE link = ?').bind(app_.link).first<{ id: number }>()
+    const variants = linkVariants(app_.link)
+    const dup = await c.env.DB.prepare(
+      `SELECT id FROM friends WHERE link IN (${variants.map(() => '?').join(',')}) LIMIT 1`,
+    )
+      .bind(...variants)
+      .first<{ id: number }>()
     if (dup) return jsonError(409, 'duplicate_link', `该链接已在友链中（#${dup.id}），可先删除旧记录再通过`)
 
     const groupId = overrides.groupId ?? (await ensureGroupByName(c.env.DB, '未分组'))

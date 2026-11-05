@@ -484,6 +484,18 @@ describe('设置中心', () => {
     expect(values['ui.theme']).toBe('dark')
     expect(values['api.corsOrigin']).toBe('https://me.example.com')
   })
+
+  it('导入允许缺少新增键，缺失项回退默认值', async () => {
+    const imp = await authed('/api/admin/settings/import', {
+      method: 'POST',
+      body: JSON.stringify({ 'site.name': '旧版导出' }),
+    })
+    expect(imp.status).toBe(200)
+    const { values } = (await imp.json()) as { values: Record<string, unknown> }
+    expect(values['site.name']).toBe('旧版导出')
+    expect(values['crawl.batchSize']).toBe(3)
+    expect(values['apply.requiredFields']).toEqual(['siteName', 'link'])
+  })
 })
 
 describe('导出', () => {
