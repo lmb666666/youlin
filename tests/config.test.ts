@@ -42,8 +42,10 @@ describe('配置定义（DESIGN §9 完整性）', () => {
   it('site.url / site.logo 拒绝非 http(s) 协议', () => {
     expect(fieldSchemas['site.url']!.safeParse('').success).toBe(true)
     expect(fieldSchemas['site.url']!.safeParse('https://example.com').success).toBe(true)
+    expect(fieldSchemas['site.url']!.safeParse('example.com').success).toBe(true)
     expect(fieldSchemas['site.url']!.safeParse('javascript:alert(1)').success).toBe(false)
     expect(fieldSchemas['site.logo']!.safeParse('/logo.svg').success).toBe(true)
+    expect(fieldSchemas['site.logo']!.safeParse('data:image/png;base64,AAAA').success).toBe(true)
     expect(fieldSchemas['site.logo']!.safeParse('javascript:alert(1)').success).toBe(false)
   })
 

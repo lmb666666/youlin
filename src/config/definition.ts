@@ -44,6 +44,8 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
       { key: 'site.url', type: 'string', default: '', label: '主站地址', description: '反链检测的目标，如 https://example.com', placeholder: 'https://example.com' },
       { key: 'site.logo', type: 'string', default: '', label: '站点 Logo', description: '申请页显示（可选）。', placeholder: 'https://…/logo.png' },
       { key: 'site.description', type: 'text', default: '', label: '站点简介', description: '申请页说明的默认值（apply.intro 留空时使用）。', full: true },
+      { key: 'site.timezone', type: 'string', default: 'Asia/Shanghai', label: '时区', description: '预留：当前未用于时间显示，v1.1 接入管理台。' },
+      { key: 'site.locale', type: 'string', default: 'zh-CN', label: '界面语言', description: '预留：当前仅 zh-CN，英文计划 v1.1。' },
     ],
   },
   {

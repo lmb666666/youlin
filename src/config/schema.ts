@@ -8,10 +8,21 @@ import { httpUrl } from '../util/validate'
  *  - settingsJsonSchema：GET /api/admin/settings/schema 输出，前端据此渲染表单
  */
 
+/** 主站地址允许 http(s) 或裸域名（backlink 一直支持这种写法），但拒绝 javascript: 等协议 */
+const bareHost = z
+  .string()
+  .max(2000)
+  .regex(/^[a-z0-9][a-z0-9.-]*(?::\d{1,5})?(?:\/.*)?$/i, '需为 http(s) URL 或域名')
+
 /** 需要协议校验的配置项；其余 string 保持宽松（可为空/域名/前缀） */
 const SPECIAL_SCHEMAS: Record<string, z.ZodType> = {
-  'site.url': z.union([z.literal(''), httpUrl]),
-  'site.logo': z.union([z.literal(''), httpUrl, z.string().regex(/^\/[^/]/, '站内路径需以 / 开头')]),
+  'site.url': z.union([z.literal(''), httpUrl, bareHost]),
+  'site.logo': z.union([
+    z.literal(''),
+    httpUrl,
+    z.string().regex(/^\/[^/]/, '站内路径需以 / 开头'),
+    z.string().regex(/^data:image\/[a-z0-9.+-]+;base64,/i, '仅支持 http(s)、站内路径或 data:image'),
+  ]),
 }
 
 function fieldZod(f: ConfigField): z.ZodType {

@@ -24,11 +24,13 @@ function cssColor(value: string): string {
   return cleaned.length <= 64 ? cleaned : ''
 }
 
-/** 只允许 http(s) 跳转；防止设置导入把 site.url 写成 javascript: */
+/** 只允许 http(s) 跳转；裸域名补 https，javascript:/data: 等协议直接丢弃 */
 function safeHttpUrl(value: string): string {
+  const raw = value.trim()
+  if (!raw) return ''
   try {
-    const u = new URL(value)
-    return u.protocol === 'http:' || u.protocol === 'https:' ? value : ''
+    const u = new URL(raw.includes('://') ? raw : `https://${raw}`)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.toString() : ''
   } catch {
     return ''
   }

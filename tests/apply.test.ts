@@ -124,6 +124,12 @@ describe('接口三 GET /apply（申请页）', () => {
     expect(html).not.toContain('← 返回')
   })
 
+  it('裸域名 site.url 补全为 https 返回链接', async () => {
+    await setSettings({ 'site.url': 'example.com' })
+    const html = await (await SELF.fetch(`${BASE}/apply`)).text()
+    expect(html).toContain('href="https://example.com/"')
+  })
+
   it('Turnstile 开启但缺 siteKey → 提示且不渲染必败表单', async () => {
     await setSettings({ 'apply.turnstile': true, 'apply.turnstileSiteKey': '' })
     const html = await (await SELF.fetch(`${BASE}/apply`)).text()

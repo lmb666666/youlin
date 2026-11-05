@@ -50,6 +50,8 @@ export interface AppConfig {
     url: string
     logo: string
     description: string
+    timezone: string
+    locale: string
   }
   crawl: {
     enabled: boolean
