@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { SELF } from 'cloudflare:test'
-import { env } from './helpers'
+import { env, SELF } from './helpers'
 
 const BASE = 'https://example.com'
 
 async function authed(path: string, opts: { method?: string; body?: string } = {}): Promise<Response> {
   const login = await SELF.fetch(`${BASE}/api/admin/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '10.4.5.1' },
+    headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '10.4.5.1' },
     body: JSON.stringify({ token: 'test-admin-token' }),
   })
   return SELF.fetch(BASE + path, {

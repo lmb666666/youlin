@@ -16,7 +16,7 @@
     "deploy": "pnpm build && wrangler d1 migrations apply DB --remote && wrangler deploy",
     "lint": "eslint .",
     "docs:config": "node scripts/gen-config-docs.mjs",
-    "test": "vitest run && vitest run --config vitest.node.config.ts",
+    "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit && pnpm --filter youlin-web typecheck",
     "seed": "wrangler d1 execute youlin --local --file=scripts/seed.sql",

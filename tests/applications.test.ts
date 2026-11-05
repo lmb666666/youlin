@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { SELF } from 'cloudflare:test'
-import { env } from './helpers'
+import { env, SELF } from './helpers'
 
 const BASE = 'https://example.com'
 
@@ -18,7 +17,7 @@ async function setSettings(pairs: Record<string, unknown>): Promise<void> {
 async function loginCookie(): Promise<string> {
   const res = await SELF.fetch(`${BASE}/api/admin/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '10.1.1.1' },
+    headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '10.1.1.1' },
     body: JSON.stringify({ token: 'test-admin-token' }),
   })
   return res.headers.get('set-cookie')!.split(';')[0]!
@@ -35,7 +34,7 @@ async function authed(path: string, opts: { method?: string; body?: string } = {
 async function seedApplication(over: Partial<Record<string, unknown>> = {}): Promise<number> {
   const res = await SELF.fetch(`${BASE}/apply`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': `10.5.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` },
+    headers: { 'Content-Type': 'application/json', 'x-forwarded-for': `10.5.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` },
     body: JSON.stringify({ siteName: '待审站', link: `https://app-${Math.random().toString(36).slice(2, 8)}.example.com/`, ...over }),
   })
   expect(res.status).toBe(201)

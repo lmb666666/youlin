@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { SELF } from 'cloudflare:test'
 import Ajv2020 from 'ajv/dist/2020'
 import addFormats from 'ajv-formats'
-import { env } from './helpers'
+import { env, SELF } from './helpers'
 import schema from '../schemas/api-apply.response.schema.json'
 import example from '../schemas/examples/api-apply.example.json'
 
@@ -26,7 +25,7 @@ async function setSettings(pairs: Record<string, unknown>): Promise<void> {
 function post(body: unknown, ip = '10.9.9.9'): Promise<Response> {
   return SELF.fetch(`${BASE}/apply`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': ip },
+    headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip },
     body: JSON.stringify(body),
   })
 }

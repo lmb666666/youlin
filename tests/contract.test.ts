@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { SELF } from 'cloudflare:test'
-import { env } from './helpers'
+import { env, SELF } from './helpers'
 import Ajv2020 from 'ajv/dist/2020'
 import addFormats from 'ajv-formats'
 import schema from '../schemas/api-links.response.schema.json'
@@ -13,7 +12,7 @@ const validate = ajv.compile(schema as object)
 async function login(): Promise<string> {
   const res = await SELF.fetch('https://example.com/api/admin/login', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '10.9.0.1' },
+    headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '10.9.0.1' },
     body: JSON.stringify({ token: 'test-admin-token' }),
   })
   expect(res.status).toBe(200)

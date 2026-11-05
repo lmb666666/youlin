@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { SELF } from 'cloudflare:test'
-import { env } from './helpers'
+import { env, SELF } from './helpers'
 
 const BASE = 'https://example.com'
 
 async function login(ip: string, token = 'test-admin-token'): Promise<Response> {
   return SELF.fetch(`${BASE}/api/admin/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': ip },
+    headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip },
     body: JSON.stringify({ token }),
   })
 }

@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { SELF } from 'cloudflare:test'
 import Ajv2020 from 'ajv/dist/2020'
 import addFormats from 'ajv-formats'
-import { env } from './helpers'
+import { env, SELF } from './helpers'
 import schema from '../schemas/api-circle.response.schema.json'
 import example from '../schemas/examples/api-circle.example.json'
 

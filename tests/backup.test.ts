@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { SELF } from 'cloudflare:test'
-import { env } from './helpers'
+import { env, SELF } from './helpers'
 import { gzipBytes, gunzipBytes } from '../src/backup/codec'
 import { CONFIG_FIELDS } from '../src/config/definition'
 import type { BackupEnvelope } from '../src/backup/format'
@@ -10,7 +9,7 @@ const BASE = 'https://example.com'
 async function login(ip = '10.8.8.8'): Promise<string> {
   const res = await SELF.fetch(`${BASE}/api/admin/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': ip },
+    headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip },
     body: JSON.stringify({ token: 'test-admin-token' }),
   })
   expect(res.status).toBe(200)

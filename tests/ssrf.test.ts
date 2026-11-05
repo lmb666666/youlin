@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { SELF } from 'cloudflare:test'
-import { env } from './helpers'
+import { env, SELF } from './helpers'
 import { isPrivateTarget } from '../src/crawler/http'
 import { clientIp, isPrivateIp } from '../src/util/ip'
 
@@ -128,7 +127,7 @@ describe('申请反链检测：内网目标不出站', () => {
 
     const res = await SELF.fetch('https://example.com/apply', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '10.9.9.9' },
+      headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '10.9.9.9' },
       body: JSON.stringify({ siteName: '内网站', link: 'http://127.0.0.1:9/', desc: '探测' }),
     })
     expect(res.status).toBe(201)

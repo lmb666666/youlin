@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { SELF } from 'cloudflare:test'
-import { env } from './helpers'
+import { env, SELF } from './helpers'
 import { gunzipBytes } from '../src/backup/codec'
 
 /**
@@ -73,7 +72,7 @@ function mockDav(input: RequestInfo | URL, init?: RequestInit): Promise<Response
 async function login(ip = '10.7.7.7'): Promise<string> {
   const res = await SELF.fetch(`${BASE}/api/admin/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': ip },
+    headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip },
     body: JSON.stringify({ token: 'test-admin-token' }),
   })
   expect(res.status).toBe(200)
