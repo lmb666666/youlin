@@ -41,7 +41,7 @@ pnpm dev                  # http://127.0.0.1:8787 → /admin 进入管理台
   - **接口契约**（`schemas/` 下的 JSON Schema 必须与实现、文档示例同步）；
   - **抓取/解析**（新增对 RSS/Atom 变体的处理时，附坏样例）；
   - **配置项**（新增/变更配置必须同步 `src/config/definition.ts` 并运行 `pnpm docs:config`）。
-- 测试使用 Node + better-sqlite3 内存库，不依赖 workerd 或任何外部服务。
+- 测试使用 Node + better-sqlite3 内存库，不依赖外部服务。
 
 ## 代码风格
 

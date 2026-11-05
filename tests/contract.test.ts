@@ -186,7 +186,7 @@ describe('接口一 GET /api/links 契约', () => {
 })
 
 describe('健康检查 GET /healthz', () => {
-  it('D1 可达时返回 200，且禁用缓存', async () => {
+  it('数据库可达时返回 200，且禁用缓存', async () => {
     const res = await SELF.fetch('https://example.com/healthz')
     expect(res.status).toBe(200)
     expect(res.headers.get('cache-control')).toBe('no-store')

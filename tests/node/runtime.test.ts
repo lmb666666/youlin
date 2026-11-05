@@ -15,7 +15,7 @@ import type { Env } from '../../src/types'
 
 /**
  * Node 运行时用例：真实的 better-sqlite3 + 同一套 Hono 应用。
- * 这些用例证明 Docker 路径与 Workers 路径跑的是同一份业务代码。
+ * 这些用例证明测试环境与 Docker 运行时跑的是同一份业务代码。
  */
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -69,7 +69,7 @@ describe('SQLite 适配层', () => {
     expect(again.skipped).toBeGreaterThan(0)
   })
 
-  it('run/first/all 的返回形状与 D1 一致', async () => {
+  it('run/first/all 返回形状符合适配器约定', async () => {
     const ins = await db
       .prepare('INSERT INTO groups (name, "desc", sort) VALUES (?, ?, ?)')
       .bind('技术区', null, 3)

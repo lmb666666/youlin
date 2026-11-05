@@ -172,7 +172,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     description: '会话与登录保护。',
     fields: [
       { key: 'security.sessionDays', type: 'number', default: 30, min: 1, max: 365, label: '会话有效期（天）', description: '登录 Cookie 的有效期。' },
-      { key: 'security.loginRateLimit', type: 'number', default: 5, min: 1, max: 100, label: '登录限流（次/小时）', description: '单 IP 每小时上限。' },
+      { key: 'security.loginRateLimit', type: 'number', default: 5, min: 1, max: 100, label: '登录限流（次/小时）', description: '单 IP 一小时滑动窗口，记录在 SQLite，重启后仍生效。' },
     ],
   },
   {

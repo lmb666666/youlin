@@ -74,7 +74,7 @@ describe('配置定义（DESIGN §9 完整性）', () => {
 })
 
 describe('数据库未迁移检测', () => {
-  it('识别 D1 的「表不存在」错误，供友好提示', () => {
+  it('识别数据库「表不存在」错误，供友好提示', () => {
     expect(isMissingTableError('D1_ERROR: no such table: groups: SQLITE_ERROR')).toBe(true)
     expect(isMissingTableError('D1_ERROR: no such column: foo: SQLITE_ERROR')).toBe(true)
     expect(isMissingTableError('D1_ERROR: UNIQUE constraint failed: friends.link')).toBe(false)

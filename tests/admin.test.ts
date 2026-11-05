@@ -432,7 +432,7 @@ describe('导入', () => {
     expect(link?.avatar).toBeUndefined()
   })
 
-  it('101 个新分组导入不触发 D1 参数上限', async () => {
+  it('101 个新分组导入正常分片', async () => {
     const prefix = `Bulk${Math.random().toString(36).slice(2, 8)}`
     const groups = Array.from({ length: 101 }, (_, i) => ({
       name: `${prefix}-${i}`,
