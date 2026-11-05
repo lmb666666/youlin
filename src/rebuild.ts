@@ -31,6 +31,7 @@ export async function triggerRebuild(env: Env, cfg: AppConfig, reason: string): 
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'User-Agent': userAgent(cfg) },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10_000),
       })
       if (!res.ok) return { triggered: false, error: `webhook HTTP ${res.status}` }
     } else {
@@ -45,6 +46,7 @@ export async function triggerRebuild(env: Env, cfg: AppConfig, reason: string): 
           'User-Agent': userAgent(cfg),
         },
         body: JSON.stringify({ event_type: cfg.rebuild.eventType, client_payload: payload }),
+        signal: AbortSignal.timeout(10_000),
       })
       if (res.status !== 204) return { triggered: false, error: `github HTTP ${res.status}` }
     }
