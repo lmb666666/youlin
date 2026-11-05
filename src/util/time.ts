@@ -1,6 +1,8 @@
 /** 时间工具：库内 datetime('now') 存的是 "YYYY-MM-DD HH:MM:SS"（UTC），输出一律 ISO 8601 UTC */
 
-const DB_TS = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/
+// 库内时间可能是 datetime('now') 的空格格式，也可能是测试/旧数据里的 T 分隔无 Z 格式；
+// 两者都按 UTC 解释，避免 Node 在非 UTC 时区把它当成本地时间。
+const DB_TS = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/
 
 /** "2026-10-05 13:55:00" → "2026-10-05T13:55:00Z"；已是 ISO 或空则原样/undefined */
 export function isoUtc(value: string | null | undefined): string | undefined {
