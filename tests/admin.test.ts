@@ -87,6 +87,15 @@ describe('鉴权', () => {
   })
 })
 
+describe('错误映射', () => {
+  it('service 错误保留状态码与错误码，管理接口错误也不被缓存', async () => {
+    const res = await authed('/api/admin/groups/not-a-number', { method: 'DELETE' })
+    expect(res.status).toBe(400)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    expect(await res.json()).toMatchObject({ error: { code: 'invalid_id' } })
+  })
+})
+
 describe('分组与友链 CRUD', () => {
   it('分组：创建/重名 409/更新/删除', async () => {
     const created = await authed('/api/admin/groups', { method: 'POST', body: JSON.stringify({ name: '技术区', desc: '技术博客' }) })

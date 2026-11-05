@@ -1,0 +1,114 @@
+import { AppError } from '../errors'
+import { isoUtc } from '../util/time'
+import { listExportRows } from '../repositories/export'
+import type { Db } from '../types'
+
+/**
+ * 数据导出（DESIGN §5 GET /api/admin/export?format=json|csv|opml）
+ *   json  全量结构（含 hidden 与全部管理字段），供备份/再导入
+ *   csv   友链表格（Excel 友好，UTF-8 BOM）
+ *   opml  订阅列表（RSS 阅读器友好，含 feed 的条目才输出）
+ */
+
+export interface ExportFile {
+  body: string
+  contentType: string
+  filename: string
+}
+
+function xmlEsc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function csvEsc(v: unknown): string {
+  const s = v === null || v === undefined ? '' : String(v)
+  // 公式注入防护：Excel/WPS 会把 =+-@ 开头的单元格当公式执行（字段含公开申请提交的内容）
+  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s
+  return `"${safe.replaceAll('"', '""')}"`
+}
+
+export function exportFriends(db: Db, format: string): ExportFile {
+  if (!['json', 'csv', 'opml'].includes(format)) {
+    throw new AppError(400, 'unsupported_format', `格式 ${format} 不支持（json / csv / opml）`)
+  }
+
+  const rows = listExportRows(db)
+  const items = rows.filter((r): r is typeof r & { link: string } => r.link !== null)
+
+  if (format === 'csv') {
+    const header = ['分组', '作者', '趣称', '标题', '简介', '链接', 'feed', 'icon', '头像', '架构', '订阅日期', '备注', '入圈', '状态', '添加时间']
+    const lines = items.map((r) =>
+      [
+        r.groupName, r.author, r.nickname ?? '', r.title ?? '', r.desc ?? '', r.link ?? '', r.feed ?? '',
+        r.icon ?? '', r.avatar ?? '', (r.archs ?? []).join(' '), r.since, r.comment ?? '',
+        r.inCircle === 1 ? '是' : '否', r.status === 'active' ? '显示' : '隐藏', isoUtc(r.createdAt) ?? '',
+      ]
+        .map(csvEsc)
+        .join(','),
+    )
+    return {
+      body: '\ufeff' + [header.map(csvEsc).join(','), ...lines].join('\r\n'),
+      contentType: 'text/csv; charset=utf-8',
+      filename: 'youlin-friends.csv',
+    }
+  }
+
+  if (format === 'opml') {
+    const outlines = items
+      .filter((r) => r.feed)
+      .map(
+        (r) =>
+          `      <outline type="rss" text="${xmlEsc(r.title ?? r.author ?? '')}" title="${xmlEsc(r.title ?? r.author ?? '')}" xmlUrl="${xmlEsc(r.feed!)}" htmlUrl="${xmlEsc(r.link ?? '')}" category="${xmlEsc(r.groupName)}" />`,
+      )
+      .join('\n')
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>友邻 · 友链订阅列表</title>
+    <dateCreated>${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}</dateCreated>
+  </head>
+  <body>
+    <outline text="友邻" title="友邻">
+${outlines}
+    </outline>
+  </body>
+</opml>
+`
+    return { body: xml, contentType: 'text/x-opml; charset=utf-8', filename: 'youlin-friends.opml' }
+  }
+
+  // json：分组结构 + 全部管理字段（可被 /api/admin/import 直接再导入）
+  const groups: { name: string; desc?: string; links: Record<string, unknown>[] }[] = []
+  for (const r of rows) {
+    let g = groups.find((x) => x.name === r.groupName)
+    if (!g) {
+      g = { name: r.groupName, links: [] }
+      if (r.groupDesc) g.desc = r.groupDesc
+      groups.push(g)
+    }
+    if (!r.link) continue
+    const link: Record<string, unknown> = {
+      author: r.author,
+      link: r.link,
+      since: r.since,
+      inCircle: r.inCircle === 1,
+      status: r.status,
+      addedAt: isoUtc(r.createdAt),
+    }
+    if (r.nickname) link.nickname = r.nickname
+    if (r.title) link.title = r.title
+    if (r.desc) link.desc = r.desc
+    if (r.feed) link.feed = r.feed
+    if (r.icon) link.icon = r.icon
+    if (r.avatar) link.avatar = r.avatar
+    if (r.archs && r.archs.length > 0) link.archs = r.archs
+    if (r.comment) link.comment = r.comment
+    g.links.push(link)
+  }
+
+  return {
+    body: JSON.stringify({ exportedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), groups }, null, 2),
+    contentType: 'application/json; charset=utf-8',
+    filename: 'youlin-data.json',
+  }
+}

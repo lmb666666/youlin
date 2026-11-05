@@ -1,4 +1,5 @@
 import type { Context } from 'hono'
+import { AppError } from '../errors'
 
 export function jsonError(status: number, code: string, message: string, details?: unknown): Response {
   return Response.json({ error: { code, message, ...(details !== undefined ? { details } : {}) } }, { status })
@@ -25,13 +26,20 @@ export function isUniqueConstraintError(e: unknown): boolean {
   return /UNIQUE constraint failed/i.test(message)
 }
 
-/** 解析请求体 JSON；失败返回 undefined 并已写响应 */
+/** 解析请求体 JSON；失败返回 undefined（需要直接写响应的场景用） */
 export async function readJson(c: Context): Promise<unknown | undefined> {
   try {
     return await c.req.json()
   } catch {
     return undefined
   }
+}
+
+/** 解析请求体 JSON；失败抛 400，交给统一错误映射 */
+export async function readJsonOrThrow(c: Context): Promise<unknown> {
+  const body = await readJson(c)
+  if (body === undefined) throw new AppError(400, 'invalid_json', '请求体须为 JSON')
+  return body
 }
 
 export type LimitedJson =

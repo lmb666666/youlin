@@ -186,6 +186,8 @@ describe('接口三 POST /apply（提交）', () => {
   it('字段校验：缺必填 → 400 字段级 message', async () => {
     const res = await post({ link: 'https://x.example.com/' })
     expect(res.status).toBe(400)
+    // service 抛错后由全局映射返回，公开接口的 CORS 头不能丢
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
     const body = (await res.json()) as { error: { code: string; details: Record<string, string> } }
     expect(body.error.code).toBe('validation_failed')
     expect(body.error.details.siteName).toBeTruthy()

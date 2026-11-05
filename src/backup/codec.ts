@@ -1,5 +1,5 @@
 import { BACKUP_VERSION, backupEnvelope, type BackupEnvelope } from './format'
-import { jsonError } from '../util/http'
+import { AppError } from '../errors'
 
 /** 备份文件编解码：gzip（两者运行时都原生支持 CompressionStream） */
 
@@ -20,22 +20,18 @@ export async function gunzipBytes(input: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 
-export type DecodedBackup =
-  | { ok: true; envelope: BackupEnvelope }
-  | { ok: false; response: Response }
-
 /**
  * 解码并校验上传的备份：
  *  - 允许 .json 与 .json.gz（按魔数判断，不看文件名）
  *  - 解压体积有上限，避免压缩炸弹
  *  - 版本号严格匹配，避免用新格式覆盖旧实例
  */
-export async function decodeBackup(bytes: Uint8Array): Promise<DecodedBackup> {
+export async function decodeBackup(bytes: Uint8Array): Promise<BackupEnvelope> {
   if (bytes.length === 0) {
-    return { ok: false, response: jsonError(400, 'empty_file', '备份文件为空') }
+    throw new AppError(400, 'empty_file', '备份文件为空')
   }
   if (bytes.length > BACKUP_MAX_BYTES) {
-    return { ok: false, response: jsonError(413, 'file_too_large', `备份文件超过 ${BACKUP_MAX_BYTES / 1024 / 1024} MB`) }
+    throw new AppError(413, 'file_too_large', `备份文件超过 ${BACKUP_MAX_BYTES / 1024 / 1024} MB`)
   }
 
   let raw: Uint8Array
@@ -44,16 +40,16 @@ export async function decodeBackup(bytes: Uint8Array): Promise<DecodedBackup> {
     if (bytes.length >= 18) {
       const isize = new DataView(bytes.buffer, bytes.byteOffset + bytes.byteLength - 4, 4).getUint32(0, true)
       if (isize > BACKUP_MAX_INFLATED) {
-        return { ok: false, response: jsonError(413, 'file_too_large', '解压后的备份体积超出上限') }
+        throw new AppError(413, 'file_too_large', '解压后的备份体积超出上限')
       }
     }
     try {
       raw = await gunzipBytes(bytes)
     } catch {
-      return { ok: false, response: jsonError(400, 'bad_gzip', '无法解压：文件不是有效的 gzip') }
+      throw new AppError(400, 'bad_gzip', '无法解压：文件不是有效的 gzip')
     }
     if (raw.byteLength > BACKUP_MAX_INFLATED) {
-      return { ok: false, response: jsonError(413, 'file_too_large', '解压后的备份体积超出上限') }
+      throw new AppError(413, 'file_too_large', '解压后的备份体积超出上限')
     }
   } else {
     raw = bytes
@@ -63,27 +59,21 @@ export async function decodeBackup(bytes: Uint8Array): Promise<DecodedBackup> {
   try {
     json = JSON.parse(new TextDecoder().decode(raw))
   } catch {
-    return { ok: false, response: jsonError(400, 'invalid_json', '备份文件不是合法 JSON') }
+    throw new AppError(400, 'invalid_json', '备份文件不是合法 JSON')
   }
 
   // 版本号单独判断，给出“备份来自更新版本”的可操作提示
   // JSON 可能是 null/数组/字符串，先判对象再取属性，避免 null.version 抛 500
   const version = json !== null && typeof json === 'object' ? (json as { version?: unknown }).version : undefined
   if (typeof version === 'number' && version > BACKUP_VERSION) {
-    return {
-      ok: false,
-      response: jsonError(400, 'unsupported_version', `备份来自更新版本的友邻（v${version}），当前实例只支持 v${BACKUP_VERSION}，请先升级`),
-    }
+    throw new AppError(400, 'unsupported_version', `备份来自更新版本的友邻（v${version}），当前实例只支持 v${BACKUP_VERSION}，请先升级`)
   }
 
   const parsed = backupEnvelope.safeParse(json)
   if (!parsed.success) {
     const first = parsed.error.issues[0]
     const where = first && first.path.length > 0 ? `（${first.path.join('.')}）` : ''
-    return {
-      ok: false,
-      response: jsonError(400, 'invalid_backup', `备份格式不正确${where}：${first?.message ?? '无法识别'}`),
-    }
+    throw new AppError(400, 'invalid_backup', `备份格式不正确${where}：${first?.message ?? '无法识别'}`)
   }
-  return { ok: true, envelope: parsed.data }
+  return parsed.data
 }

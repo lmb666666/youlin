@@ -1,6 +1,6 @@
 import type { Env } from '../types'
+import { AppError } from '../errors'
 import { fieldSchemas } from '../config/schema'
-import { jsonError } from '../util/http'
 import { replaceAllData } from '../repositories/backup'
 import type { BackupEnvelope } from './format'
 
@@ -21,45 +21,41 @@ export interface RestoreSummary {
   settingsSkipped: number
 }
 
-export type RestoreOutcome = { ok: true; summary: RestoreSummary } | { ok: false; response: Response }
-
-function validate(envelope: BackupEnvelope): Response | null {
+function validate(envelope: BackupEnvelope): void {
   const { groups, friends, articles, sourceState } = envelope.data
 
   const groupNames = new Set<string>()
   for (const g of groups) {
-    if (groupNames.has(g.name)) return jsonError(400, 'duplicate_group', `备份内分组重名：${g.name}`)
+    if (groupNames.has(g.name)) throw new AppError(400, 'duplicate_group', `备份内分组重名：${g.name}`)
     groupNames.add(g.name)
   }
 
   const links = new Set<string>()
   for (const f of friends) {
-    if (links.has(f.link)) return jsonError(400, 'duplicate_link', `备份内友链重复：${f.link}`)
+    if (links.has(f.link)) throw new AppError(400, 'duplicate_link', `备份内友链重复：${f.link}`)
     links.add(f.link)
     if (!groupNames.has(f.group)) {
-      return jsonError(400, 'broken_reference', `友链 ${f.link} 指向不存在的分组「${f.group}」`)
+      throw new AppError(400, 'broken_reference', `友链 ${f.link} 指向不存在的分组「${f.group}」`)
     }
   }
 
   for (const a of articles ?? []) {
     if (!links.has(a.friend)) {
-      return jsonError(400, 'broken_reference', `文章 ${a.link} 指向不存在的友链 ${a.friend}`)
+      throw new AppError(400, 'broken_reference', `文章 ${a.link} 指向不存在的友链 ${a.friend}`)
     }
   }
   for (const s of sourceState ?? []) {
     if (!links.has(s.friend)) {
-      return jsonError(400, 'broken_reference', `体检状态指向不存在的友链 ${s.friend}`)
+      throw new AppError(400, 'broken_reference', `体检状态指向不存在的友链 ${s.friend}`)
     }
   }
-  return null
 }
 
 export async function applyRestore(
   db: Env['DB'],
   envelope: BackupEnvelope,
-): Promise<RestoreOutcome> {
-  const broken = validate(envelope)
-  if (broken) return { ok: false, response: broken }
+): Promise<RestoreSummary> {
+  validate(envelope)
 
   const { groups, friends, applications, settings } = envelope.data
 
@@ -83,15 +79,12 @@ export async function applyRestore(
   const counts = replaceAllData(db, envelope.data, settingsRows, Object.keys(fieldSchemas))
 
   return {
-    ok: true,
-    summary: {
-      groups: groups.length,
-      friends: friends.length,
-      applications: applications.length,
-      articles: counts.articles,
-      sourceState: counts.sourceState,
-      settings: counts.settings,
-      settingsSkipped: skipped,
-    },
+    groups: groups.length,
+    friends: friends.length,
+    applications: applications.length,
+    articles: counts.articles,
+    sourceState: counts.sourceState,
+    settings: counts.settings,
+    settingsSkipped: skipped,
   }
 }

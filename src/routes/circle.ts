@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
-import { isoUtc } from '../util/time'
-import { corsHeaders } from './links'
-import { circleStats, listCircleArticles } from '../repositories/articles'
+import { publicCircle } from '../services/public'
+import { corsHeaders } from '../util/cors'
 import type { AppEnv } from '../types'
 
 /**
@@ -14,41 +13,12 @@ import type { AppEnv } from '../types'
 export function publicCircleRoute() {
   const app = new Hono<AppEnv>()
 
-  app.get('/api/circle', async (c) => {
+  app.get('/api/circle', (c) => {
     const cfg = c.get('cfg')
-    const stats = circleStats(c.env.DB)
-
-    const requested = Number(c.req.query('limit'))
-    const cap = Math.min(cfg.crawl.outputMaxArticles, cfg.api.maxLimit)
-    const limit = Number.isInteger(requested) && requested > 0 ? Math.min(requested, cap) : cap
-    const articles = listCircleArticles(c.env.DB, limit)
-
-    return c.json(
-      {
-        stats: {
-          friends: stats.friends,
-          active: stats.active,
-          failed: stats.failed,
-          articles: stats.articles,
-          updatedAt: isoUtc(stats.updatedAt) ?? null,
-        },
-        articles: articles.map((a) => {
-          const out: { title: string; link: string; author?: string; avatar?: string; publishedAt: string } = {
-            title: a.title,
-            link: a.link,
-            publishedAt: isoUtc(a.publishedAt) ?? a.publishedAt,
-          }
-          if (a.author) out.author = a.author
-          if (a.avatar) out.avatar = a.avatar
-          return out
-        }),
-      },
-      200,
-      {
-        ...corsHeaders(cfg),
-        'Cache-Control': `public, max-age=${cfg.api.cacheSeconds}`,
-      },
-    )
+    return c.json(publicCircle(c.env.DB, cfg, c.req.query('limit')), 200, {
+      ...corsHeaders(cfg),
+      'Cache-Control': `public, max-age=${cfg.api.cacheSeconds}`,
+    })
   })
 
   app.options('/api/circle', (c) => {

@@ -1,15 +1,18 @@
 import { Hono, type Context } from 'hono'
-import { jsonError, readJson } from '../../util/http'
+import { AppError } from '../../errors'
+import { readJsonOrThrow } from '../../util/http'
+import {
+  BACKUP_MAX_BYTES,
+  backupOverview,
+  createBackupArchive,
+  listWebdavFiles,
+  previewBackup,
+  restoreFromFile,
+  restoreFromWebdav,
+  runWebdavBackupNow,
+  testWebdavConnection,
+} from '../../services/backup'
 import type { AppEnv } from '../../types'
-import { runtimeGet, runtimeSet } from '../../crawler/http'
-import { collectBackup } from '../../backup/collect'
-import { BACKUP_MAX_BYTES, decodeBackup, gzipBytes } from '../../backup/codec'
-import { backupFileName } from '../../backup/format'
-import { applyRestore } from '../../backup/restore'
-import { invalidateConfigCache } from '../../config/loader'
-import { readBackupStatus, recordBackupStatus } from '../../backup/status'
-import { runWebdavBackup } from '../../backup/run'
-import { BACKUP_FILE_PATTERN, WebDavError, redactWebdavUrl, webdavClientFor, webdavReady } from '../../backup/webdav'
 
 /**
  * 备份与恢复（管理台「备份」页）
@@ -24,217 +27,75 @@ import { BACKUP_FILE_PATTERN, WebDavError, redactWebdavUrl, webdavClientFor, web
  *   POST /api/admin/backup/webdav/restore        从云端文件恢复（同样先自动存档）
  */
 
-/** 未配 WebDAV 时，恢复凭证的有效期（export 时签发，防「从未备份就恢复」） */
-const PREBACKUP_WINDOW_MS = 3_600_000
-const PREBACKUP_TICKET_KEY = 'internal.prebackupAt'
-
-async function readRawBody(c: Context<AppEnv>): Promise<Uint8Array | Response> {
+async function readRawBody(c: Context<AppEnv>): Promise<Uint8Array> {
   const declared = Number(c.req.header('content-length') ?? '0')
   if (Number.isFinite(declared) && declared > BACKUP_MAX_BYTES) {
-    return jsonError(413, 'file_too_large', `备份文件超过 ${BACKUP_MAX_BYTES / 1024 / 1024} MB`)
+    throw new AppError(413, 'file_too_large', `备份文件超过 ${BACKUP_MAX_BYTES / 1024 / 1024} MB`)
   }
   const buf = await c.req.arrayBuffer()
   if (buf.byteLength > BACKUP_MAX_BYTES) {
-    return jsonError(413, 'file_too_large', `备份文件超过 ${BACKUP_MAX_BYTES / 1024 / 1024} MB`)
+    throw new AppError(413, 'file_too_large', `备份文件超过 ${BACKUP_MAX_BYTES / 1024 / 1024} MB`)
   }
-  if (buf.byteLength === 0) return jsonError(400, 'empty_file', '请选择备份文件')
+  if (buf.byteLength === 0) throw new AppError(400, 'empty_file', '请选择备份文件')
   return new Uint8Array(buf)
 }
 
-function webdavErrorResponse(err: unknown): Response {
-  const message = err instanceof Error ? err.message : String(err)
-  const status = err instanceof WebDavError && err.status >= 400 && err.status < 600 ? 502 : 500
-  return jsonError(status, 'webdav_failed', message)
+function requireConfirm(c: Context<AppEnv>): void {
+  if (c.req.query('confirm') !== '1') {
+    throw new AppError(400, 'confirm_required', '恢复会覆盖现有数据，请先确认')
+  }
 }
 
 export function backupRoutes() {
   const app = new Hono<AppEnv>()
 
   app.get('/api/admin/backup/export', async (c) => {
-    const includeArticles = c.req.query('articles') === '1'
-    const envelope = await collectBackup(c.env.DB, c.env, { includeArticles })
-    const gz = await gzipBytes(new TextEncoder().encode(JSON.stringify(envelope)))
-    const name = backupFileName()
-    // 签发恢复凭证：未配 WebDAV 时 restore 以「1 小时内导出过」作为留存证明
-    await runtimeSet(c.env.DB, PREBACKUP_TICKET_KEY, new Date().toISOString())
-    await recordBackupStatus(c.env.DB, {
-      at: new Date().toISOString(),
-      ok: true,
-      target: 'download',
-      bytes: gz.byteLength,
-      file: name,
-    })
-    return new Response(gz as unknown as BodyInit, {
+    const archive = await createBackupArchive(c.env.DB, c.env, c.req.query('articles') === '1')
+    return new Response(archive.bytes as unknown as BodyInit, {
       headers: {
         'Content-Type': 'application/gzip',
-        'Content-Disposition': `attachment; filename="${name}"`,
+        'Content-Disposition': `attachment; filename="${archive.name}"`,
         'Cache-Control': 'no-store',
       },
     })
   })
 
   app.post('/api/admin/backup/preview', async (c) => {
-    const body = await readRawBody(c)
-    if (body instanceof Response) return body
-    const decoded = await decodeBackup(body)
-    if (!decoded.ok) return decoded.response
-    const e = decoded.envelope
-    return c.json({
-      summary: {
-        version: e.version,
-        exportedAt: e.exportedAt,
-        appVersion: e.app?.version ?? null,
-        counts: {
-          groups: e.data.groups.length,
-          friends: e.data.friends.length,
-          applications: e.data.applications.length,
-          articles: e.data.articles?.length ?? 0,
-          settings: Object.keys(e.data.settings).length,
-        },
-        includeArticles: e.data.articles !== undefined,
-      },
-    })
+    const summary = await previewBackup(await readRawBody(c))
+    return c.json({ summary })
   })
 
   app.post('/api/admin/backup/restore', async (c) => {
-    if (c.req.query('confirm') !== '1') {
-      return jsonError(400, 'confirm_required', '恢复会覆盖现有数据，请先确认')
-    }
-    const body = await readRawBody(c)
-    if (body instanceof Response) return body
-    const decoded = await decodeBackup(body)
-    if (!decoded.ok) return decoded.response
-
-    const cfg = c.get('cfg')
-    const webdavConfigured = webdavReady(cfg, c.env.WEBDAV_PASSWORD)
-    let preRestoreFile: string | null = null
-    if (webdavConfigured) {
-      // 恢复前自动留存：上传失败就不动现有数据。存档恒含文章——
-      // wipe 会无条件清空 articles，若按待恢复文件的范围存档，回滚时文章会永久丢失
-      const pre = await runWebdavBackup(c.env.DB, c.env, cfg, {
-        target: 'pre-restore',
-        includeArticles: true,
-      })
-      if (!pre.ok) {
-        return jsonError(
-          502,
-          'prebackup_failed',
-          `恢复前的自动存档失败：${pre.error ?? '未知错误'}。请先下载当前数据，或到设置中清空 WebDAV 地址后重试`,
-        )
-      }
-      preRestoreFile = pre.status.file ?? null
-    } else {
-      // 未配 WebDAV：以 1 小时内执行过导出为凭证（服务端记录，无法凭空伪造）
-      const ticket = await runtimeGet(c.env.DB, PREBACKUP_TICKET_KEY)
-      const ticketAt = typeof ticket === 'string' ? Date.parse(ticket) : NaN
-      if (!Number.isFinite(ticketAt) || Date.now() - ticketAt > PREBACKUP_WINDOW_MS) {
-        return jsonError(400, 'prebackup_required', '请先在备份页下载一份当前数据的备份（1 小时内），再执行恢复')
-      }
-    }
-
-    const outcome = await applyRestore(c.env.DB, decoded.envelope)
-    if (!outcome.ok) return outcome.response
-    invalidateConfigCache()
-    return c.json({ ok: true, summary: outcome.summary, preRestoreFile })
+    requireConfirm(c)
+    const result = await restoreFromFile(c.env.DB, c.env, c.get('cfg'), await readRawBody(c))
+    return c.json({ ok: true, ...result })
   })
 
-  app.get('/api/admin/backup/status', async (c) => {
-    const cfg = c.get('cfg')
-    const last = await readBackupStatus(c.env.DB)
-    return c.json({
-      last,
-      backup: {
-        enabled: cfg.backup.enabled,
-        schedule: cfg.backup.schedule,
-        includeArticles: cfg.backup.includeArticles,
-        retain: cfg.backup.retain,
-      },
-      webdav: {
-        configured: webdavReady(cfg, c.env.WEBDAV_PASSWORD),
-        url: redactWebdavUrl(cfg.backup.webdavUrl),
-        path: cfg.backup.webdavPath,
-      },
-    })
-  })
+  app.get('/api/admin/backup/status', async (c) =>
+    c.json(await backupOverview(c.env.DB, c.env, c.get('cfg'))),
+  )
 
   app.post('/api/admin/backup/webdav/test', async (c) => {
-    const cfg = c.get('cfg')
-    if (!webdavReady(cfg, c.env.WEBDAV_PASSWORD)) {
-      return jsonError(400, 'webdav_not_configured', 'WebDAV 未配置：请填写地址与用户名，并设置 WEBDAV_PASSWORD')
-    }
-    try {
-      const client = webdavClientFor(cfg, c.env.WEBDAV_PASSWORD)
-      const result = await client.test()
-      return c.json({ ok: true, ...result })
-    } catch (err) {
-      return webdavErrorResponse(err)
-    }
+    const result = await testWebdavConnection(c.env, c.get('cfg'))
+    return c.json({ ok: true, ...result })
   })
 
   app.post('/api/admin/backup/webdav/run', async (c) => {
-    const cfg = c.get('cfg')
-    if (!webdavReady(cfg, c.env.WEBDAV_PASSWORD)) {
-      return jsonError(400, 'webdav_not_configured', 'WebDAV 未配置：请填写地址与用户名，并设置 WEBDAV_PASSWORD')
-    }
-    const result = await runWebdavBackup(c.env.DB, c.env, cfg, {
-      target: 'webdav',
-      includeArticles: cfg.backup.includeArticles,
-    })
-    if (!result.ok) {
-      return c.json(
-        { error: { code: 'webdav_backup_failed', message: result.error ?? '备份失败' }, status: result.status },
-        502,
-      )
-    }
+    const result = await runWebdavBackupNow(c.env.DB, c.env, c.get('cfg'))
     return c.json({ ok: true, status: result.status, pruned: result.pruned ?? 0 })
   })
 
   app.get('/api/admin/backup/webdav/list', async (c) => {
-    const cfg = c.get('cfg')
-    if (!webdavReady(cfg, c.env.WEBDAV_PASSWORD)) {
-      return jsonError(400, 'webdav_not_configured', 'WebDAV 未配置：请填写地址与用户名，并设置 WEBDAV_PASSWORD')
-    }
-    try {
-      const client = webdavClientFor(cfg, c.env.WEBDAV_PASSWORD)
-      const files = await client.list()
-      return c.json({ files })
-    } catch (err) {
-      return webdavErrorResponse(err)
-    }
+    const files = await listWebdavFiles(c.env, c.get('cfg'))
+    return c.json({ files })
   })
 
   app.post('/api/admin/backup/webdav/restore', async (c) => {
-    if (c.req.query('confirm') !== '1') {
-      return jsonError(400, 'confirm_required', '恢复会覆盖现有数据，请先确认')
-    }
-    const cfg = c.get('cfg')
-    const body = await readJson(c)
+    requireConfirm(c)
+    const body = await readJsonOrThrow(c)
     const name = body !== null && typeof body === 'object' ? String((body as Record<string, unknown>).name ?? '') : ''
-    if (!BACKUP_FILE_PATTERN.test(name)) return jsonError(400, 'invalid_name', '备份文件名不合法')
-
-    let bytes: Uint8Array
-    try {
-      const client = webdavClientFor(cfg, c.env.WEBDAV_PASSWORD)
-      bytes = await client.get(name)
-    } catch (err) {
-      return webdavErrorResponse(err)
-    }
-    const decoded = await decodeBackup(bytes)
-    if (!decoded.ok) return decoded.response
-
-    // 云端恢复同样先存档一份再去覆盖；存档恒含文章（理由同文件恢复）
-    const pre = await runWebdavBackup(c.env.DB, c.env, cfg, {
-      target: 'pre-restore',
-      includeArticles: true,
-    })
-    if (!pre.ok) {
-      return jsonError(502, 'prebackup_failed', `恢复前的自动存档失败：${pre.error ?? '未知错误'}`)
-    }
-
-    const outcome = await applyRestore(c.env.DB, decoded.envelope)
-    if (!outcome.ok) return outcome.response
-    invalidateConfigCache()
-    return c.json({ ok: true, summary: outcome.summary, preRestoreFile: pre.status.file ?? null })
+    const result = await restoreFromWebdav(c.env.DB, c.env, c.get('cfg'), name)
+    return c.json({ ok: true, ...result })
   })
 
   return app

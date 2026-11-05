@@ -60,8 +60,10 @@ pnpm dev                  # http://127.0.0.1:8787 → /admin 进入管理台
 ## 项目结构
 
 ```
-src/            Node 服务（路由 / 抓取 / 体检 / 配置 / 鉴权）
-  routes/       公开接口与管理 API
+src/            Node 服务（路由 / 业务 / 抓取 / 体检 / 配置 / 鉴权）
+  routes/       公开接口与管理 API（HTTP 适配：参数解析、响应与文件下载）
+  services/     业务用例（zod 校验、错误码、跨 repository 流程）
+  repositories/ Drizzle 查询与事务（唯一写库入口）
   crawler/      RSS 解析、feed 发现、轮转抓取、体检
   backup/       导出、恢复、WebDAV
   server/       HTTP、SQLite、静态资源、调度
