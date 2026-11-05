@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import type { Env } from '../types'
+import { guardedDispatcher } from './net'
 
 /** 读取 .env（本地开发/Compose 用；已存在的环境变量优先） */
 export function loadDotEnv(file = '.env'): void {
@@ -39,5 +40,7 @@ export function createEnv(db: Env['DB']): Env {
     GITHUB_PAT: optional('GITHUB_PAT'),
     WEBDAV_PASSWORD: optional('WEBDAV_PASSWORD'),
     YOULIN_CONFIG_OVERRIDES: optional('YOULIN_CONFIG_OVERRIDES'),
+    FETCH_DISPATCHER: guardedDispatcher,
+    RUNTIME: 'node',
   }
 }

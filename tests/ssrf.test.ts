@@ -72,6 +72,22 @@ describe('clientIp：来源判定', () => {
     expect(clientIp(fakeCtx({ 'x-forwarded-for': '1.2.3.4' }, env))).toBe('203.0.113.9')
   })
 
+  it('Node 直连：客户端伪造 CF-Connecting-IP 无效', () => {
+    const env = { incoming: { socket: { remoteAddress: '203.0.113.9' } } }
+    expect(clientIp(fakeCtx({ 'cf-connecting-ip': '1.2.3.4' }, env))).toBe('203.0.113.9')
+  })
+
+  it('Node 反代：伪造 CF-Connecting-IP 不覆盖 XFF 最后一档', () => {
+    const loopback = { incoming: { socket: { remoteAddress: '127.0.0.1' } } }
+    expect(
+      clientIp(fakeCtx({ 'cf-connecting-ip': '1.2.3.4', 'x-forwarded-for': '198.51.100.2, 203.0.113.10' }, loopback)),
+    ).toBe('203.0.113.10')
+  })
+
+  it('Node 运行时标记且无 socket：仍不采信 cf，回退 local', () => {
+    expect(clientIp(fakeCtx({ 'cf-connecting-ip': '1.2.3.4' }, { RUNTIME: 'node' }))).toBe('local')
+  })
+
   it('Node 带本地反代：socket 为回环/私网时取 XFF 最后一档（由可信代理追加）', () => {
     const loopback = { incoming: { socket: { remoteAddress: '127.0.0.1' } } }
     const lan = { incoming: { socket: { remoteAddress: '192.168.1.5' } } }

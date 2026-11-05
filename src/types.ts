@@ -37,6 +37,10 @@ export interface Env {
   WEBDAV_PASSWORD?: string
   /** 覆盖级配置：JSON 文本，扁平 camelCase 点号键（DESIGN §9） */
   YOULIN_CONFIG_OVERRIDES?: string
+  /** 仅 Node 运行时：带 DNS 私网校验的 undici dispatcher（见 server/net.ts） */
+  FETCH_DISPATCHER?: unknown
+  /** 仅 Node 运行时：标记来源，clientIp 据此拒绝客户端伪造的 CF-Connecting-IP */
+  RUNTIME?: 'node'
 }
 
 /** 应用级配置（嵌套视图，由扁平 settings 合并而来） */
@@ -46,8 +50,6 @@ export interface AppConfig {
     url: string
     logo: string
     description: string
-    timezone: string
-    locale: string
   }
   crawl: {
     enabled: boolean

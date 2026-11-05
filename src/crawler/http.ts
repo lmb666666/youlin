@@ -77,7 +77,6 @@ export function userAgent(cfg: AppConfig): string {
 }
 
 export async function fetchRemote(env: Env, opts: FetchOptions): Promise<FetchResult> {
-  void env
   const { cfg } = opts
   const started = Date.now()
   const proxy = cfg.proxy.url
@@ -104,7 +103,10 @@ export async function fetchRemote(env: Env, opts: FetchOptions): Promise<FetchRe
         if ((hop > 0 || !viaProxy) && isPrivateTarget(current)) {
           return fail('目标地址不可抓取（内网或非 http(s) 地址）')
         }
-        const res = await fetch(current, {
+        // Node 侧只对直连目标挂私网 DNS 校验；首跳走代理时代理本身可能是 127.0.0.1，
+        // 不能误杀。代理后的重定向仍然直连，所以 hop>0 同样要挂。
+        const direct = hop > 0 || !viaProxy
+        const init = {
           method: 'GET',
           redirect: 'manual',
           headers: {
@@ -113,7 +115,9 @@ export async function fetchRemote(env: Env, opts: FetchOptions): Promise<FetchRe
             ...opts.headers,
           },
           signal: AbortSignal.timeout(opts.timeoutSeconds * 1000),
-        })
+          ...(direct && env.FETCH_DISPATCHER ? { dispatcher: env.FETCH_DISPATCHER } : {}),
+        } as RequestInit & { dispatcher?: unknown }
+        const res = await fetch(current, init)
         const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null
         if (!location || hop >= MAX_REDIRECTS) {
           const body = await readBodyWithLimit(res)

@@ -9,6 +9,7 @@ import { createFetchHandler } from './assets'
 import { SqliteD1 } from './db'
 import { createEnv, loadDotEnv } from './env'
 import { applyMigrations } from './migrations'
+import type { Env } from '../types'
 
 /**
  * Node 运行时入口：HTTP 服务 + 静态资源 + 定时作业。
@@ -26,7 +27,8 @@ const DB_PATH = process.env.DB_PATH ?? 'data/youlin.db'
 const WEB_ROOT = process.env.WEB_ROOT ?? 'web/dist'
 const MIGRATIONS_DIR = process.env.MIGRATIONS_DIR ?? 'migrations'
 const CRON_ENABLED = process.env.CRON_ENABLED !== 'false'
-const CRON_INTERVAL_SECONDS = Math.max(30, Number(process.env.CRON_INTERVAL_SECONDS ?? 300))
+const parsedInterval = Number(process.env.CRON_INTERVAL_SECONDS ?? 300)
+const CRON_INTERVAL_SECONDS = Number.isFinite(parsedInterval) ? Math.max(30, parsedInterval) : 300
 
 fs.mkdirSync(path.dirname(path.resolve(DB_PATH)), { recursive: true })
 
@@ -43,10 +45,18 @@ const db = new SqliteD1(raw)
 const env = createEnv(db)
 const handler = createFetchHandler(WEB_ROOT, (req, e) => app.fetch(req, e, undefined))
 
-const server = serve({ fetch: (request) => handler(request, env), port: PORT, hostname: HOST }, (info) => {
-  console.log(`[youlin] listening on http://${HOST}:${info.port}`)
-  console.log(`[youlin] 静态资源目录 ${path.resolve(WEB_ROOT)}`)
-})
+const server = serve(
+  {
+    // 把 @hono/node-server 的 incoming 带进应用 Env，clientIp 才能在 Node 上取到真实 socket 地址
+    fetch: (request, nodeEnv) => handler(request, { ...env, incoming: nodeEnv.incoming } as Env),
+    port: PORT,
+    hostname: HOST,
+  },
+  (info) => {
+    console.log(`[youlin] listening on http://${HOST}:${info.port}`)
+    console.log(`[youlin] 静态资源目录 ${path.resolve(WEB_ROOT)}`)
+  },
+)
 
 let running = false
 async function tick(): Promise<void> {

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { setCookie, deleteCookie } from 'hono/cookie'
 import { SESSION_COOKIE, cookieOptions, verifyAdminToken, loginAllowed, resetLoginHits, signSession } from '../../auth'
-import { jsonError } from '../../util/http'
+import { jsonError, readJsonLimited } from '../../util/http'
 import { clientIp } from '../../util/ip'
 import type { AppEnv } from '../../types'
 
@@ -15,13 +15,9 @@ export function loginRoutes() {
       return jsonError(429, 'rate_limited', '尝试过于频繁，请一小时后再试')
     }
 
-    let body: unknown
-    try {
-      body = await c.req.json()
-    } catch {
-      return jsonError(400, 'invalid_json', '请求体须为 JSON')
-    }
-    const token = (body as { token?: unknown })?.token
+    const limited = await readJsonLimited(c, 4 * 1024)
+    if (!limited.ok) return limited.response
+    const token = (limited.value as { token?: unknown })?.token
     if (typeof token !== 'string' || token.length === 0) {
       return jsonError(400, 'invalid_body', '缺少 token')
     }

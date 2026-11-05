@@ -33,3 +33,54 @@ export async function readJson(c: Context): Promise<unknown | undefined> {
     return undefined
   }
 }
+
+export type LimitedJson =
+  | { ok: true; value: unknown }
+  | { ok: false; response: Response }
+
+/**
+ * 公开接口的 JSON 解析：先看 Content-Length，再对流式读取做累计上限。
+ * 不能直接 c.req.json()——它会先把整个 body 读进内存，超大请求可以打爆 Node 进程。
+ */
+export async function readJsonLimited(c: Context, maxBytes: number): Promise<LimitedJson> {
+  const declared = Number(c.req.header('content-length') ?? '')
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    return { ok: false, response: jsonError(413, 'payload_too_large', `请求体超过 ${maxBytes} 字节`) }
+  }
+
+  const body = c.req.raw.body
+  if (!body) {
+    return { ok: false, response: jsonError(400, 'invalid_json', '请求体须为 JSON') }
+  }
+
+  const reader = body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {})
+        return { ok: false, response: jsonError(413, 'payload_too_large', `请求体超过 ${maxBytes} 字节`) }
+      }
+      chunks.push(value)
+    }
+  } catch {
+    return { ok: false, response: jsonError(400, 'invalid_json', '读取请求体失败') }
+  }
+
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(new TextDecoder().decode(bytes)) }
+  } catch {
+    return { ok: false, response: jsonError(400, 'invalid_json', '请求体须为 JSON') }
+  }
+}

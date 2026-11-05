@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { AppConfig, AppEnv, Env } from '../types'
-import { jsonError, fieldDetails, readJson, isUniqueConstraintError } from '../util/http'
+import { jsonError, fieldDetails, readJsonLimited, isUniqueConstraintError } from '../util/http'
 import { clientIp } from '../util/ip'
 import { clampText } from '../util/str'
 import { renderApplyPage } from '../apply-page'
@@ -141,10 +141,10 @@ export function applyRoutes() {
     const cfg = c.get('cfg')
     if (!cfg.apply.enabled) return jsonError(403, 'apply_disabled', '友链申请通道未开放')
 
-    const body = await readJson(c)
-    if (body === undefined) return jsonError(400, 'invalid_json', '请求体须为 JSON')
+    const limited = await readJsonLimited(c, 64 * 1024)
+    if (!limited.ok) return limited.response
 
-    const parsed = applySchema.safeParse(body)
+    const parsed = applySchema.safeParse(limited.value)
     if (!parsed.success) return jsonError(400, 'validation_failed', '请检查表单填写', fieldDetails(parsed.error.issues))
     const input = parsed.data
 

@@ -56,11 +56,18 @@ function nodeRemoteAddress(env: unknown): string | null {
 }
 
 export function clientIp(c: { req: { header: (k: string) => string | undefined }; env: unknown }): string {
-  const cf = c.req.header('cf-connecting-ip')
-  if (cf) return cf
   const socket = nodeRemoteAddress(c.env)
+  const cf = c.req.header('cf-connecting-ip')
   const xff = xffParts(c.req.header('x-forwarded-for'))
-  if (socket === null) return xff[0] ?? 'local'
+
+  const isNode = (c.env as { RUNTIME?: string } | undefined)?.RUNTIME === 'node' || socket !== null
+
+  // Workers 没有 Node socket，cf-connecting-ip 由 Cloudflare 注入、不可伪造
+  if (!isNode) return cf ?? xff[0] ?? 'local'
+
+  // Node 运行时该头完全由客户端控制，不能采信，否则登录/申请限流可被轮换头绕过。
+  // 反代场景取 XFF 最后一档（由可信代理追加）；直连场景直接采信 socket。
+  if (socket === null) return xff[xff.length - 1] ?? 'local'
   if (!isPublicIp(socket)) return xff[xff.length - 1] ?? socket
   return socket
 }
