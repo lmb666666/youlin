@@ -56,35 +56,20 @@ describe('clientIp：来源判定', () => {
     }
   }
 
-  it('Workers：cf-connecting-ip 优先且不受 XFF 影响', () => {
-    const ip = clientIp(fakeCtx({ 'cf-connecting-ip': '203.0.113.7', 'x-forwarded-for': '1.2.3.4' }))
-    expect(ip).toBe('203.0.113.7')
-  })
-
-  it('无 cf 头时回退 XFF 首段（测试环境路径）', () => {
-    expect(clientIp(fakeCtx({ 'x-forwarded-for': '198.51.100.1, 10.0.0.1' }))).toBe('198.51.100.1')
+  it('无 socket 时回退 XFF 最后一档（测试环境路径）', () => {
+    expect(clientIp(fakeCtx({ 'x-forwarded-for': '198.51.100.1, 10.0.0.1' }))).toBe('10.0.0.1')
     expect(clientIp(fakeCtx({}))).toBe('local')
   })
 
-  it('Node 直连：socket 是公网地址时直接采信，伪造 XFF 无效', () => {
+  it('直连：socket 是公网地址时直接采信，伪造 XFF 无效', () => {
     const env = { incoming: { socket: { remoteAddress: '203.0.113.9' } } }
     expect(clientIp(fakeCtx({ 'x-forwarded-for': '1.2.3.4' }, env))).toBe('203.0.113.9')
   })
 
-  it('Node 直连：客户端伪造 CF-Connecting-IP 无效', () => {
+  it('客户端伪造 CF-Connecting-IP 被忽略', () => {
     const env = { incoming: { socket: { remoteAddress: '203.0.113.9' } } }
     expect(clientIp(fakeCtx({ 'cf-connecting-ip': '1.2.3.4' }, env))).toBe('203.0.113.9')
-  })
-
-  it('Node 反代：伪造 CF-Connecting-IP 不覆盖 XFF 最后一档', () => {
-    const loopback = { incoming: { socket: { remoteAddress: '127.0.0.1' } } }
-    expect(
-      clientIp(fakeCtx({ 'cf-connecting-ip': '1.2.3.4', 'x-forwarded-for': '198.51.100.2, 203.0.113.10' }, loopback)),
-    ).toBe('203.0.113.10')
-  })
-
-  it('Node 运行时标记且无 socket：仍不采信 cf，回退 local', () => {
-    expect(clientIp(fakeCtx({ 'cf-connecting-ip': '1.2.3.4' }, { RUNTIME: 'node' }))).toBe('local')
+    expect(clientIp(fakeCtx({ 'cf-connecting-ip': '1.2.3.4' }))).toBe('local')
   })
 
   it('Node 带本地反代：socket 为回环/私网时取 XFF 最后一档（由可信代理追加）', () => {

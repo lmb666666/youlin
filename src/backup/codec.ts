@@ -11,12 +11,12 @@ export function isGzip(bytes: Uint8Array): boolean {
 }
 
 export async function gzipBytes(input: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([input]).stream().pipeThrough(new CompressionStream('gzip'))
+  const stream = new Blob([input as unknown as BlobPart]).stream().pipeThrough(new CompressionStream('gzip'))
   return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 
 export async function gunzipBytes(input: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([input]).stream().pipeThrough(new DecompressionStream('gzip'))
+  const stream = new Blob([input as unknown as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'))
   return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 

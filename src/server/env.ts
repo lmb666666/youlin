@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import type { Env } from '../types'
-import { guardedDispatcher } from './net'
 
 /** 读取 .env（本地开发/Compose 用；已存在的环境变量优先） */
 export function loadDotEnv(file = '.env'): void {
@@ -27,7 +26,7 @@ function optional(name: string): string | undefined {
   return v ? v : undefined
 }
 
-/** 环境变量 → 应用的 Env（与 Workers 的绑定同名） */
+/** 环境变量 → 应用的 Env */
 export function createEnv(db: Env['DB']): Env {
   const adminToken = optional('ADMIN_TOKEN')
   if (!adminToken) {
@@ -40,7 +39,5 @@ export function createEnv(db: Env['DB']): Env {
     GITHUB_PAT: optional('GITHUB_PAT'),
     WEBDAV_PASSWORD: optional('WEBDAV_PASSWORD'),
     YOULIN_CONFIG_OVERRIDES: optional('YOULIN_CONFIG_OVERRIDES'),
-    FETCH_DISPATCHER: guardedDispatcher,
-    RUNTIME: 'node',
   }
 }

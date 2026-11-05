@@ -7,7 +7,7 @@ import { clampText } from '../util/str'
 import { runPool } from '../util/pool'
 
 /**
- * 抓取器（DESIGN §6）：Workers 免费版 10ms CPU → 分批轮转，绝不一次全量。
+ * 抓取器（DESIGN §6）：分批轮转，降低单次抓取压力，绝不在一个 tick 全量抓取。
  * 单源流程：条件请求（ETag/Last-Modified）→ 304 只更新状态 → 200 解析增量 upsert；
  * RSS 失败时落到完整体检分支（首页兜底 / feed 发现 / 反链），避免 "feed 挂了误报整站失联"。
  */

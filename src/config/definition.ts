@@ -51,7 +51,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
   {
     key: 'crawl',
     label: '朋友圈抓取',
-    description: '分批轮转，适配 Workers 免费额度。',
+    description: '分批轮转，降低单次抓取压力。',
     fields: [
       { key: 'crawl.enabled', type: 'boolean', default: true, label: '抓取总开关', description: '关闭后停止抓取，已有数据照常输出。' },
       { key: 'crawl.batchSize', type: 'number', default: 3, min: 1, max: 50, label: '每轮站点数', description: '与 Cron 频率共同决定刷新周期。' },

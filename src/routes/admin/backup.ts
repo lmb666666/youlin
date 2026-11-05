@@ -64,7 +64,7 @@ export function backupRoutes() {
       bytes: gz.byteLength,
       file: name,
     })
-    return new Response(gz, {
+    return new Response(gz as unknown as BodyInit, {
       headers: {
         'Content-Type': 'application/gzip',
         'Content-Disposition': `attachment; filename="${name}"`,

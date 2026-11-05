@@ -36,7 +36,7 @@ export function dateOnly(value: string | number | Date | null | undefined): stri
   return d.toISOString().slice(0, 10)
 }
 
-/** ISO 8601 → D1 的 "YYYY-MM-DD HH:MM:SS"（UTC），与 datetime('now') 同格式 */
+/** ISO 8601 → SQLite 的 "YYYY-MM-DD HH:MM:SS"（UTC），与 datetime('now') 同格式 */
 export function dbTime(iso: string): string {
   return iso.slice(0, 19).replace('T', ' ')
 }

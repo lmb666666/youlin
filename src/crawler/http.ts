@@ -1,11 +1,12 @@
 import type { Env, AppConfig } from '../types'
 import { isPrivateIp } from '../util/ip'
+import { guardedDispatcher } from '../server/net'
 
 /**
  * 出站 HTTP（抓取/体检/反链/申请共用）：
  *  - UA 模板 {site.url} 替换；超时 AbortSignal.timeout
- *  - 内网/环回地址防护：Workers 平台本就拦截私网出站，这里补齐 Node 自托管路径
- *  - 重定向 manual 逐跳校验（follow 会把重定向目标直接交给平台，Node 上可被跳进内网）
+ *  - 内网/环回地址防护：DNS 解析与连接绑定在 guardedDispatcher 上
+ *  - 重定向 manual 逐跳校验（follow 会把重定向目标直接交给 fetch，可能跳进内网）
  *  - 响应体上限：超大 RSS/首页直接按失败处理，防止打爆内存
  *  - 代理策略统一走 cfg.proxy.mode（off / fallback / always）
  */
@@ -77,6 +78,7 @@ export function userAgent(cfg: AppConfig): string {
 }
 
 export async function fetchRemote(env: Env, opts: FetchOptions): Promise<FetchResult> {
+  void env
   const { cfg } = opts
   const started = Date.now()
   const proxy = cfg.proxy.url
@@ -115,7 +117,7 @@ export async function fetchRemote(env: Env, opts: FetchOptions): Promise<FetchRe
             ...opts.headers,
           },
           signal: AbortSignal.timeout(opts.timeoutSeconds * 1000),
-          ...(direct && env.FETCH_DISPATCHER ? { dispatcher: env.FETCH_DISPATCHER } : {}),
+          ...(direct ? { dispatcher: guardedDispatcher } : {}),
         } as RequestInit & { dispatcher?: unknown }
         const res = await fetch(current, init)
         const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null

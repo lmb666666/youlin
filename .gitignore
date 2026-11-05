@@ -8,17 +8,16 @@ node_modules/
 dist/
 .output/
 .nuxt/
-.wrangler/
 coverage/
 *.tsbuildinfo
-worker-configuration.d.ts
 
 # ── 本地环境与密钥（绝不入库）────────────────────────────
-.dev.vars
 .env
 .env.*
 !.env.example
 *.local
+# 旧 Workers 本地密钥文件；保留忽略，避免历史文件误提交
+.dev.vars
 
 # ── 本地数据库（Node/Docker 运行时）────────────────────
 data/

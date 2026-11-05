@@ -14,7 +14,7 @@ export function fieldDetails(issues: { path: (string | number | symbol)[]; messa
   return out
 }
 
-/** D1 报错是否为「表未迁移」（一键部署后未跑迁移的典型首因） */
+/** 数据库报错是否为「表未迁移」（启动迁移失败/数据库文件异常） */
 export function isMissingTableError(message: string): boolean {
   return /no such table|no such column/i.test(message)
 }

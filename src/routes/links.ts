@@ -116,7 +116,7 @@ export function corsHeaders(cfg: AppConfig): Record<string, string> {
 export function publicRoutes() {
   const app = new Hono<AppEnv>()
 
-  // 健康检查：供 uptime 监控；附带 D1 可达性
+  // 健康检查：供 uptime 监控；附带数据库可达性
   app.get('/healthz', async (c) => {
     let db = true
     try {

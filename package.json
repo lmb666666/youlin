@@ -2,27 +2,25 @@
   "name": "youlin",
   "version": "0.3.0",
   "private": true,
-  "description": "友邻 Youlin — Neighbors of your blog. 友链 + 朋友圈管理台，跑在 Cloudflare Workers 上。",
+  "description": "友邻 Youlin — Neighbors of your blog. 友链 + 朋友圈管理台，Docker + SQLite 自托管。",
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=20.18.1"
+    "node": ">=24"
   },
   "packageManager": "pnpm@11.28.3",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "tsx watch src/server/main.ts",
     "dev:web": "pnpm --filter youlin-web dev",
     "build": "pnpm --filter youlin-web build",
-    "deploy": "pnpm build && wrangler d1 migrations apply DB --remote && wrangler deploy",
+    "build:server": "esbuild src/server/main.ts --bundle --platform=node --format=esm --target=node24 --external:better-sqlite3 --external:undici --outfile=server/dist/main.mjs",
+    "start": "node server/dist/main.mjs",
     "lint": "eslint .",
     "docs:config": "node scripts/gen-config-docs.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit && pnpm --filter youlin-web typecheck",
-    "seed": "wrangler d1 execute youlin --local --file=scripts/seed.sql",
-    "build:server": "esbuild src/server/main.ts --bundle --platform=node --format=esm --target=node22 --external:better-sqlite3 --external:undici --outfile=server/dist/main.mjs",
-    "dev:node": "tsx watch src/server/main.ts",
-    "start:node": "node server/dist/main.mjs"
+    "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
@@ -33,8 +31,6 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "^1.5.1",
-    "@cloudflare/workers-types": "^5.20261104.1",
     "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.19.1",
@@ -48,7 +44,6 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.71.0",
     "vite": "^8.3.5",
-    "vitest": "^4.1.12",
-    "wrangler": "^4.157.0"
+    "vitest": "^4.1.12"
   }
 }

@@ -1,5 +1,5 @@
 -- 本地示例数据（幂等：重复执行不产生重复行）
--- 执行：pnpm seed   （= wrangler d1 execute youlin --local --file=scripts/seed.sql）
+-- 执行：pnpm seed   （Node 脚本会先应用迁移，再执行本文件）
 
 INSERT INTO groups (name, "desc", sort)
 SELECT '朋友们', '在这里添加你关注的博客。', 0

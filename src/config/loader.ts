@@ -4,7 +4,7 @@ import { fieldSchemas, toNested, type FlatSettings } from './schema'
 
 /**
  * 配置三层合并（DESIGN §9）：
- *   代码默认值 ← D1 settings 表 ← 环境变量 YOULIN_CONFIG_OVERRIDES
+ *   代码默认值 ← SQLite settings 表 ← 环境变量 YOULIN_CONFIG_OVERRIDES
  *
  * 任何一层损坏（坏 JSON / 非法值）都不阻断运行：按键丢弃并 console.warn，
  * 该键回退到下一层。返回扁平合并结果 + 嵌套视图。
@@ -50,7 +50,7 @@ function sanitize(flat: FlatSettings, source: string): FlatSettings {
   return out
 }
 
-// 每个请求都读全量 settings（59 行）会在免费 D1 额度下形成明显读放大；
+// 每个请求都读全量 settings（59 行）会形成明显的数据库读放大；
 // 用 per-isolate 短 TTL 缓存，设置写入后立即失效，多 isolate 最坏延迟 5 秒。
 let cache: { key: string; at: number; flat: FlatSettings } | null = null
 let cacheMs = 5_000
@@ -72,7 +72,7 @@ export async function loadFlatSettings(db: Env['DB'], env: Env): Promise<FlatSet
 
   let merged = defaultsFlat()
 
-  // 第二层：D1 settings 表
+  // 第二层：SQLite settings 表
   const rows = await db.prepare('SELECT key, value FROM settings').all<{ key: string; value: string }>()
   const stored: FlatSettings = {}
   for (const row of rows.results) {

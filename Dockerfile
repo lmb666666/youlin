@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 # 基础镜像用 alpine：better-sqlite3 自带 linuxmusl 预编译包，体积比 debian-slim 小约 90MB
-# 友邻 Youlin · Node 运行时镜像（与 Cloudflare Workers 同一份代码）
+# 友邻 Youlin · Node + SQLite 运行时镜像
 
-FROM node:22-alpine AS base
+FROM node:24-alpine AS base
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     COREPACK_ENABLE_DOWNLOAD_PROMPT=0

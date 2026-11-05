@@ -5,7 +5,7 @@ import type Database from 'better-sqlite3'
 /**
  * 迁移执行器：读 migrations/*.sql 按文件名顺序执行，记录到 d1_migrations。
  *
- * 表名与 Cloudflare D1 的迁移表一致，从 Workers 导出的库可以直接挂在 Docker 上继续跑，
+ * 表名沿用历史命名，保证已有 Docker 数据库升级时不会重复建表；
  * 已应用的迁移不会重复执行。
  */
 

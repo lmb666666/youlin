@@ -3,7 +3,7 @@ import path from 'node:path'
 import type { Env } from '../types'
 
 /**
- * Node 侧静态资源：与 wrangler assets 的行为对齐
+ * Node 静态资源：文件命中直接返回，其余 GET 走 SPA fallback
  *   /api/*、/apply、/healthz → 交给 Hono
  *   命中 web/dist 里的文件 → 直接返回（/assets/ 带哈希，长缓存）
  *   其余 GET → index.html（SPA fallback）

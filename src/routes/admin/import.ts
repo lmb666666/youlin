@@ -200,7 +200,7 @@ export function importRoutes() {
           c.env.DB.prepare('INSERT OR IGNORE INTO groups (name, sort) VALUES (?, ?)').bind(name, nextSort + i),
         ),
       )
-      // 回查实际行（并发下部分 INSERT 可能被唯一索引忽略）；D1 单查询最多 100 个参数，必须分片
+      // 回查实际行（并发下部分 INSERT 可能被唯一索引忽略）；SQL 变量数有上限，必须分片
       for (let i = 0; i < missing.length; i += 100) {
         const chunk = missing.slice(i, i + 100)
         const created = await c.env.DB.prepare(

@@ -1,35 +1,35 @@
 /**
- * 运行时中立的 D1 最小接口：Cloudflare 的 D1Database 与 Node 侧的 SQLite 适配层
- * 都满足这组签名（本项目只用到 prepare/bind/first/all/run/batch 与 last_row_id）。
+ * SQLite 访问层最小接口：应用只依赖 prepare/bind/first/all/run/batch 与 last_row_id。
+ * Node 侧由 better-sqlite3 适配（见 server/db.ts），测试使用同一实现。
  */
-export interface D1Meta {
+export interface DbMeta {
   last_row_id?: number
   changes?: number
   duration?: number
 }
 
-export interface D1Result<T = unknown> {
+export interface DbResult<T = unknown> {
   results?: T[]
   success?: boolean
-  meta: D1Meta
+  meta: DbMeta
 }
 
-export interface D1PreparedStatement {
-  bind(...values: unknown[]): D1PreparedStatement
+export interface DbStatement {
+  bind(...values: unknown[]): DbStatement
   first<T = unknown>(): Promise<T | null>
-  all<T = unknown>(): Promise<D1Result<T> & { results: T[] }>
-  run<T = unknown>(): Promise<D1Result<T>>
+  all<T = unknown>(): Promise<DbResult<T> & { results: T[] }>
+  run<T = unknown>(): Promise<DbResult<T>>
 }
 
-export interface D1DatabaseLike {
-  prepare(query: string): D1PreparedStatement
-  batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>
+export interface Db {
+  prepare(query: string): DbStatement
+  batch<T = unknown>(statements: DbStatement[]): Promise<DbResult<T>[]>
   /** 执行多条 SQL（迁移与测试清表用） */
   exec(query: string): Promise<unknown>
 }
 
 export interface Env {
-  DB: D1DatabaseLike
+  DB: Db
   ADMIN_TOKEN: string
   TURNSTILE_SECRET?: string
   GITHUB_PAT?: string
@@ -37,10 +37,6 @@ export interface Env {
   WEBDAV_PASSWORD?: string
   /** 覆盖级配置：JSON 文本，扁平 camelCase 点号键（DESIGN §9） */
   YOULIN_CONFIG_OVERRIDES?: string
-  /** 仅 Node 运行时：带 DNS 私网校验的 undici dispatcher（见 server/net.ts） */
-  FETCH_DISPATCHER?: unknown
-  /** 仅 Node 运行时：标记来源，clientIp 据此拒绝客户端伪造的 CF-Connecting-IP */
-  RUNTIME?: 'node'
 }
 
 /** 应用级配置（嵌套视图，由扁平 settings 合并而来） */
@@ -134,7 +130,7 @@ export interface AppConfig {
 /** DB 里的时间是 datetime('now') → "YYYY-MM-DD HH:MM:SS"（UTC） */
 export type DbTimestamp = string
 
-/** Hono 泛型：Bindings=wrangler 绑定，Variables=请求内共享 */
+/** Hono 泛型：Bindings=运行时依赖，Variables=请求内共享 */
 export interface AppEnv {
   Bindings: Env
   Variables: { cfg: AppConfig }

@@ -1,7 +1,7 @@
 import { XMLParser } from 'fast-xml-parser'
 
 /**
- * 极简 WebDAV 客户端（fetch 实现，Workers 与 Node 通用）
+ * 极简 WebDAV 客户端（fetch 实现，Node 运行时）
  *
  * 只覆盖备份需要的方法：MKCOL 建目录、PUT 上传、PROPFIND 列目录、GET 下载、DELETE 删除。
  * 认证用 Basic；密码来自 WEBDAV_PASSWORD（环境变量），不落库、不进备份。

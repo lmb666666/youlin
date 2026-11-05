@@ -11,8 +11,7 @@ describe('Node 出站 DNS 防护', () => {
     await expect(request('http://localhost:9/', { dispatcher: guardedDispatcher })).rejects.toThrow(/内网|环回/)
   })
 
-  it('fetchRemote 在 Node 上把 dispatcher 传给 fetch', async () => {
-    const dispatcher = { marker: true }
+  it('fetchRemote 始终把 guardedDispatcher 传给 fetch', async () => {
     const captured: unknown[] = []
     vi.stubGlobal('fetch', async (_input: unknown, init?: RequestInit & { dispatcher?: unknown }) => {
       captured.push(init?.dispatcher)
@@ -25,12 +24,12 @@ describe('Node 出站 DNS 防护', () => {
       proxy: { url: '', mode: 'off' },
     } as unknown as AppConfig
 
-    const res = await fetchRemote({ FETCH_DISPATCHER: dispatcher } as unknown as Env, {
+    const res = await fetchRemote({} as Env, {
       url: 'https://example.com/',
       cfg,
       timeoutSeconds: 5,
     })
     expect(res.status).toBe(200)
-    expect(captured[0]).toBe(dispatcher)
+    expect(captured[0]).toBe(guardedDispatcher)
   })
 })

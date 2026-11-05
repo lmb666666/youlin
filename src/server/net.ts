@@ -10,8 +10,6 @@ import { isPrivateIp } from '../util/ip'
  * 先 lookup 再 fetch 又有 DNS rebinding 的竞态窗口。undici 的 connect.lookup
  * 在建立连接前调用，这里拒绝任何解析到内网/环回地址的结果，并让连接直接使用
  * 已校验的地址。
- *
- * Workers 不使用该 dispatcher，私网出站由平台拦截。
  */
 
 function blockedMessage(address: string): string {

@@ -8,15 +8,12 @@ dist
 **/dist
 server/dist
 web/dist
-.wrangler
-.wrangler*
 data
 coverage
 *.log
 .env
 .env.*
 !.env.example
-.dev.vars
 .DS_Store
 .idea
 .vscode

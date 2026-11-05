@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import Database from 'better-sqlite3'
 import { app } from '../src/app'
 import { setConfigCacheMs } from '../src/config/loader'
-import { SqliteD1 } from '../src/server/db'
+import { SqliteDb } from '../src/server/db'
 import { createEnv } from '../src/server/env'
 import { applyMigrations } from '../src/server/migrations'
 
@@ -25,7 +25,7 @@ const raw = new Database(':memory:')
 raw.pragma('foreign_keys = ON')
 applyMigrations(raw, path.join(ROOT, 'migrations'))
 
-export const env = createEnv(new SqliteD1(raw))
+export const env = createEnv(new SqliteDb(raw))
 
 export const SELF = {
   async fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {

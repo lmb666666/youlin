@@ -2,7 +2,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
-import { SqliteD1 } from '../../src/server/db'
+import { SqliteDb } from '../../src/server/db'
 import { applyMigrations } from '../../src/server/migrations'
 import { invalidateConfigCache, loadFlatSettings, setConfigCacheMs } from '../../src/config/loader'
 import type { Env } from '../../src/types'
@@ -14,7 +14,7 @@ describe('配置读取缓存', () => {
     setConfigCacheMs(1_000)
     const raw = new Database(':memory:')
     applyMigrations(raw, path.join(ROOT, 'migrations'))
-    const base = new SqliteD1(raw)
+    const base = new SqliteDb(raw)
     let selects = 0
     const db = new Proxy(base, {
       get(target, prop, receiver) {
@@ -27,7 +27,7 @@ describe('配置读取缓存', () => {
         const value = Reflect.get(target, prop, receiver)
         return typeof value === 'function' ? value.bind(target) : value
       },
-    }) as SqliteD1
+    }) as SqliteDb
     const env = { YOULIN_CONFIG_OVERRIDES: '' } as Env
 
     try {

@@ -1,12 +1,12 @@
 import Database from 'better-sqlite3'
-import type { D1DatabaseLike, D1PreparedStatement, D1Result } from '../types'
+import type { Db, DbStatement, DbResult } from '../types'
 
 /**
- * D1 兼容层：把 better-sqlite3 的同步 API 包成 D1 的异步形状。
+ * SQLite 异步适配层：把 better-sqlite3 的同步 API 包成应用使用的异步形状。
  *
  * 只实现项目实际用到的子集：prepare / bind / first / all / run / batch / exec。
- * - bind 值做归一：true/false → 1/0，undefined → null（D1 不接受前两者）
- * - batch 在一个事务里顺序执行，语义与 D1 的 batch 一致
+ * - bind 值做归一：true/false → 1/0，undefined → null
+ * - batch 在一个事务里顺序执行
  */
 
 type SqliteValue = string | number | bigint | Buffer | null
@@ -18,14 +18,14 @@ function normalize(value: unknown): SqliteValue {
   return value as SqliteValue
 }
 
-class Statement implements D1PreparedStatement {
+class Statement implements DbStatement {
   constructor(
     private readonly db: Database.Database,
     private readonly sql: string,
     private readonly params: SqliteValue[] = [],
   ) {}
 
-  bind(...values: unknown[]): D1PreparedStatement {
+  bind(...values: unknown[]): DbStatement {
     return new Statement(this.db, this.sql, values.map(normalize))
   }
 
@@ -34,17 +34,17 @@ class Statement implements D1PreparedStatement {
     return row ?? null
   }
 
-  async all<T = unknown>(): Promise<D1Result<T> & { results: T[] }> {
+  async all<T = unknown>(): Promise<DbResult<T> & { results: T[] }> {
     const results = this.db.prepare(this.sql).all(...this.params) as T[]
     return { results, success: true, meta: {} }
   }
 
-  async run<T = unknown>(): Promise<D1Result<T>> {
-    return this.runSync() as D1Result<T>
+  async run<T = unknown>(): Promise<DbResult<T>> {
+    return this.runSync() as DbResult<T>
   }
 
   /** batch 事务内使用（同步） */
-  runSync(): D1Result {
+  runSync(): DbResult {
     const info = this.db.prepare(this.sql).run(...this.params)
     return {
       success: true,
@@ -53,7 +53,7 @@ class Statement implements D1PreparedStatement {
   }
 }
 
-export class SqliteD1 implements D1DatabaseLike {
+export class SqliteDb implements Db {
   constructor(private readonly raw: Database.Database) {}
 
   /** 供调度器/关停使用 */
@@ -61,14 +61,14 @@ export class SqliteD1 implements D1DatabaseLike {
     return this.raw
   }
 
-  prepare(query: string): D1PreparedStatement {
+  prepare(query: string): DbStatement {
     return new Statement(this.raw, query)
   }
 
-  async batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]> {
+  async batch<T = unknown>(statements: DbStatement[]): Promise<DbResult<T>[]> {
     const stmts = statements as Statement[]
     const runAll = this.raw.transaction(() => stmts.map((s) => s.runSync()))
-    return runAll() as D1Result<T>[]
+    return runAll() as DbResult<T>[]
   }
 
   async exec(query: string): Promise<unknown> {

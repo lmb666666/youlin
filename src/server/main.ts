@@ -6,7 +6,7 @@ import { app } from '../app'
 import { loadConfig } from '../config/loader'
 import { runScheduledJobs } from '../jobs'
 import { createFetchHandler } from './assets'
-import { SqliteD1 } from './db'
+import { SqliteDb } from './db'
 import { createEnv, loadDotEnv } from './env'
 import { applyMigrations } from './migrations'
 import type { Env } from '../types'
@@ -41,7 +41,7 @@ raw.pragma('foreign_keys = ON')
 const migration = applyMigrations(raw, MIGRATIONS_DIR)
 console.log(`[db] ${DB_PATH}：应用 ${migration.applied.length} 个迁移，跳过 ${migration.skipped} 个`)
 
-const db = new SqliteD1(raw)
+const db = new SqliteDb(raw)
 const env = createEnv(db)
 const handler = createFetchHandler(WEB_ROOT, (req, e) => app.fetch(req, e, undefined))
 

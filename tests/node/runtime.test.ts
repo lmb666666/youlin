@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Database from 'better-sqlite3'
 import { app } from '../../src/app'
-import { SqliteD1 } from '../../src/server/db'
+import { SqliteDb } from '../../src/server/db'
 import { applyMigrations } from '../../src/server/migrations'
 import { createEnv } from '../../src/server/env'
 import { gunzipBytes } from '../../src/backup/codec'
@@ -22,7 +22,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const MIGRATIONS = path.join(ROOT, 'migrations')
 const TOKEN = 'node-admin-token'
 
-let db: SqliteD1
+let db: SqliteDb
 let env: Env
 let cookie: string
 
@@ -36,7 +36,7 @@ beforeEach(async () => {
   const raw = new Database(':memory:')
   raw.pragma('foreign_keys = ON')
   applyMigrations(raw, MIGRATIONS)
-  db = new SqliteD1(raw)
+  db = new SqliteDb(raw)
   env = createEnv(db)
 
   const res = await app.request(

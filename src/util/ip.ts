@@ -1,9 +1,8 @@
 /**
  * 客户端 IP 判定（登录限流与申请限流共用）：
- *  - Workers：cf-connecting-ip 由 Cloudflare 注入，不可伪造
- *  - Node 直连：socket 远端地址为公网时直接采信，忽略 X-Forwarded-For（防伪造绕过限流）
- *  - Node 带本地反代：socket 是回环/私网 → 取 X-Forwarded-For 最后一段（由可信代理追加的真实地址）
- *  - 其余（无 socket、无 cf 头，如测试环境）：回退 XFF 首段 / 'local'
+ *  - 直连：socket 远端地址为公网时直接采信，忽略 X-Forwarded-For（防伪造绕过限流）
+ *  - 带本地反代：socket 是回环/私网 → 取 X-Forwarded-For 最后一段（由可信代理追加的真实地址）
+ *  - 无 socket（测试环境）：回退 XFF 最后一段 / 'local'
  */
 
 const PRIVATE_V4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
@@ -48,7 +47,7 @@ function xffParts(xff: string | undefined): string[] {
   return (xff ?? '').split(',').map((s) => s.trim()).filter(Boolean)
 }
 
-/** @hono/node-server 把 incoming/outgoing 放进 env；Workers 的 env 是资源绑定，没有 incoming */
+/** @hono/node-server 把 incoming/outgoing 放进 env */
 function nodeRemoteAddress(env: unknown): string | null {
   const incoming = (env as { incoming?: { socket?: { remoteAddress?: unknown } } } | undefined)?.incoming
   const addr = incoming?.socket?.remoteAddress
@@ -57,15 +56,8 @@ function nodeRemoteAddress(env: unknown): string | null {
 
 export function clientIp(c: { req: { header: (k: string) => string | undefined }; env: unknown }): string {
   const socket = nodeRemoteAddress(c.env)
-  const cf = c.req.header('cf-connecting-ip')
   const xff = xffParts(c.req.header('x-forwarded-for'))
 
-  const isNode = (c.env as { RUNTIME?: string } | undefined)?.RUNTIME === 'node' || socket !== null
-
-  // Workers 没有 Node socket，cf-connecting-ip 由 Cloudflare 注入、不可伪造
-  if (!isNode) return cf ?? xff[0] ?? 'local'
-
-  // Node 运行时该头完全由客户端控制，不能采信，否则登录/申请限流可被轮换头绕过。
   // 反代场景取 XFF 最后一档（由可信代理追加）；直连场景直接采信 socket。
   if (socket === null) return xff[xff.length - 1] ?? 'local'
   if (!isPublicIp(socket)) return xff[xff.length - 1] ?? socket

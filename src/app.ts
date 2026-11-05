@@ -8,14 +8,13 @@ import { applyRoutes } from './routes/apply'
 import { adminRoutes } from './routes/admin'
 
 /**
- * Hono 应用装配（两个运行时共用）
- *   Workers：src/index.ts 导出 fetch + scheduled，静态资源由 wrangler assets 托管
- *   Node：src/server/main.ts 起 HTTP 服务，静态资源与 SPA fallback 由 assets.ts 处理
+ * Hono 应用装配（Node 运行时）
+ *   src/server/main.ts 起 HTTP 服务，静态资源与 SPA fallback 由 assets.ts 处理
  */
 
 export const app = new Hono<AppEnv>()
 
-// 基础安全响应头（静态资源在 Node assets.ts / Workers _headers 里单独处理）
+// 基础安全响应头（静态资源由 assets.ts 单独处理）
 app.use('*', async (c, next) => {
   await next()
   c.res.headers.set('X-Content-Type-Options', 'nosniff')
@@ -39,21 +38,21 @@ app.route('/', publicCircleRoute())
 app.route('/', applyRoutes())
 app.route('/', adminRoutes())
 
-// 尾斜杠统一回到申请页（Workers assets 的 SPA fallback 会把 /apply/ 渲染成管理台）
+// 尾斜杠统一回到申请页
 app.get('/apply/', (c) => c.redirect('/apply', 308))
 
-// 静态资源之外的未知路径：JSON 404（Workers 由 assets 兜底；Node 由 assets.ts 兜底 HTML）
+// 静态资源之外的未知路径：JSON 404（页面路径由 assets.ts 兜底 HTML）
 app.notFound((c) => c.json({ error: { code: 'not_found', message: '接口不存在' } }, 404))
 
 app.onError((err, c) => {
   const msg = err instanceof Error ? err.message : String(err)
-  // 一键部署常见首因：Worker 已上线但 D1 迁移尚未执行 → 给出可操作的指引而不是裸 500
+  // 启动时迁移失败或数据库文件不可写 → 给出可操作的指引而不是裸 500
   if (isMissingTableError(msg)) {
     return c.json(
       {
         error: {
           code: 'database_not_migrated',
-          message: '数据库尚未初始化：请运行 `wrangler d1 migrations apply DB --remote`，或在 Workers Builds 中将部署命令设为 `npm run deploy` 后重新部署',
+          message: '数据库尚未初始化：请检查 /data 卷权限，并确认容器启动日志中的迁移结果；本地可删除 data/youlin.db 后重启',
         },
       },
       503,
