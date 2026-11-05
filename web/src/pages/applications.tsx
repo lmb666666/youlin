@@ -14,11 +14,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { api, type Application, type Group } from '@/lib/api'
-
-function fmt(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('zh-CN', { hour12: false })
-}
+import { formatDateTime, settingsDateTimeOptions } from '@/lib/format'
+import { useSettings } from '@/lib/settings'
 
 const TABS = [
   { value: 'pending', label: '待审核' },
@@ -55,6 +52,8 @@ function BacklinkBadge({ app }: { app: Application }) {
 }
 
 export default function ApplicationsPage() {
+  const settings = useSettings()
+  const fmt = (iso: string | null | undefined) => formatDateTime(iso, settingsDateTimeOptions(settings))
   const [tab, setTab] = useState<(typeof TABS)[number]['value']>('pending')
   const [apps, setApps] = useState<Application[] | null>(null)
   const [groups, setGroups] = useState<Group[]>([])

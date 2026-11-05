@@ -9,11 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api, type AdminStats, type Application, type ArticleRow, type CrawlStatus } from '@/lib/api'
-
-function fmt(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('zh-CN', { hour12: false })
-}
+import { formatDateTime, settingsDateTimeOptions } from '@/lib/format'
+import { useSettings } from '@/lib/settings'
 
 function StatCard(props: {
   to: string
@@ -46,6 +43,8 @@ function StatCard(props: {
 
 export default function DashboardPage() {
   const navigate = useNavigate()
+  const settings = useSettings()
+  const fmt = (iso: string | null | undefined) => formatDateTime(iso, settingsDateTimeOptions(settings))
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [status, setStatus] = useState<CrawlStatus | null>(null)
   const [articles, setArticles] = useState<ArticleRow[]>([])

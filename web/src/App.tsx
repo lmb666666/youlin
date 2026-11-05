@@ -1,33 +1,41 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router'
 import { AdminLayout } from '@/components/admin-layout'
-import LoginPage from '@/pages/login'
-import LinksPage from '@/pages/links'
-import CirclePage from '@/pages/circle'
-import HealthPage from '@/pages/health'
-import ApplicationsPage from '@/pages/applications'
-import DashboardPage from '@/pages/dashboard'
-import IntegrationPage from '@/pages/integration'
-import ImportPage from '@/pages/import'
-import BackupPage from '@/pages/backup'
-import SettingsPage from '@/pages/settings'
+
+const LoginPage = lazy(() => import('@/pages/login'))
+const LinksPage = lazy(() => import('@/pages/links'))
+const CirclePage = lazy(() => import('@/pages/circle'))
+const HealthPage = lazy(() => import('@/pages/health'))
+const ApplicationsPage = lazy(() => import('@/pages/applications'))
+const DashboardPage = lazy(() => import('@/pages/dashboard'))
+const IntegrationPage = lazy(() => import('@/pages/integration'))
+const ImportPage = lazy(() => import('@/pages/import'))
+const BackupPage = lazy(() => import('@/pages/backup'))
+const SettingsPage = lazy(() => import('@/pages/settings'))
+
+function PageFallback() {
+  return <div className="p-6 text-sm text-muted-foreground">加载中…</div>
+}
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
-      <Route path="/admin/login" element={<LoginPage />} />
-      <Route element={<AdminLayout />}>
-        <Route path="/admin/dashboard" element={<DashboardPage />} />
-        <Route path="/admin/links" element={<LinksPage />} />
-        <Route path="/admin/api" element={<IntegrationPage />} />
-        <Route path="/admin/circle" element={<CirclePage />} />
-        <Route path="/admin/health" element={<HealthPage />} />
-        <Route path="/admin/applications" element={<ApplicationsPage />} />
-        <Route path="/admin/import" element={<ImportPage />} />
-        <Route path="/admin/backup" element={<BackupPage />} />
-        <Route path="/admin/settings" element={<SettingsPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
-    </Routes>
+    <Suspense fallback={<PageFallback />}>
+      <Routes>
+        <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
+        <Route path="/admin/login" element={<LoginPage />} />
+        <Route element={<AdminLayout />}>
+          <Route path="/admin/dashboard" element={<DashboardPage />} />
+          <Route path="/admin/links" element={<LinksPage />} />
+          <Route path="/admin/api" element={<IntegrationPage />} />
+          <Route path="/admin/circle" element={<CirclePage />} />
+          <Route path="/admin/health" element={<HealthPage />} />
+          <Route path="/admin/applications" element={<ApplicationsPage />} />
+          <Route path="/admin/import" element={<ImportPage />} />
+          <Route path="/admin/backup" element={<BackupPage />} />
+          <Route path="/admin/settings" element={<SettingsPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
+      </Routes>
+    </Suspense>
   )
 }

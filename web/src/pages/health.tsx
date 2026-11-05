@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Download, HeartPulse, Play } from 'lucide-react'
 import {
@@ -17,12 +17,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { api, type HealthFriend } from '@/lib/api'
 import { csvCell } from '@/lib/csv'
+import { formatDateTime, settingsDateTimeOptions } from '@/lib/format'
 import { useSettings } from '@/lib/settings'
-
-function fmt(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('zh-CN', { hour12: false })
-}
 
 function badgeFor(v: boolean | null | undefined, trueText: string, falseText: string, unknownText = '未检测') {
   if (v === true) return <Badge variant="secondary">{trueText}</Badge>
@@ -32,7 +28,8 @@ function badgeFor(v: boolean | null | undefined, trueText: string, falseText: st
 
 const col = createColumnHelper<HealthFriend>()
 
-const columns = [
+function createColumns(fmt: (iso: string | null | undefined) => string) {
+  return [
   col.accessor('author', {
     header: '站点',
     cell: (c) => (
@@ -102,7 +99,8 @@ const columns = [
     header: '最后检查',
     cell: (c) => fmt(c.getValue()),
   }),
-]
+  ]
+}
 
 function toCsv(friends: HealthFriend[]): string {
   const header = ['作者', '链接', 'feed', '可达', '可抓取', '反链', '延迟ms', 'HTTP状态', '最终域名', '失联起始', 'RSS不可用起始', '最近发文', '距今天数', '失败次数', '最后错误', '最后检查', '下次检查']
@@ -207,6 +205,11 @@ export default function HealthPage() {
   }
 
   const settings = useSettings()
+  const fmt = useCallback(
+    (iso: string | null | undefined) => formatDateTime(iso, settingsDateTimeOptions(settings)),
+    [settings],
+  )
+  const columns = useMemo(() => createColumns(fmt), [fmt])
   const pageSize = Math.max(1, typeof settings['ui.pageSize'] === 'number' ? (settings['ui.pageSize'] as number) : 20)
   // 分页大小或行数变化后，页码可能越界（分页器会隐藏，届时无从翻回），这里夹住
   const pageCount = Math.max(1, Math.ceil((friends ?? []).length / pageSize))

@@ -41,8 +41,8 @@
 | `site.url` | 空 | 主站地址。反链检测的目标，如 https://example.com |
 | `site.logo` | 空 | 站点 Logo。申请页显示（可选）。 |
 | `site.description` | 空 | 站点简介。申请页说明的默认值（apply.intro 留空时使用）。 |
-| `site.timezone` | `Asia/Shanghai` | 时区。预留：当前未用于时间显示，v1.1 接入管理台。 |
-| `site.locale` | `zh-CN` | 界面语言。预留：当前仅 zh-CN，英文计划 v1.1。 |
+| `site.timezone` | `Asia/Shanghai` | 时区。管理台日期时间显示时区，如 Asia/Shanghai。 |
+| `site.locale` | `zh-CN` | 日期语言。日期时间格式化语言，如 zh-CN / en-US；界面文案当前仅中文。 |
 
 ### 朋友圈抓取（`crawl.*`）
 

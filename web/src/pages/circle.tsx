@@ -8,13 +8,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { api, type ArticleRow, type CrawlStatus, type HealthFriend } from '@/lib/api'
-
-function fmt(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('zh-CN', { hour12: false })
-}
+import { formatDateTime, settingsDateTimeOptions } from '@/lib/format'
+import { useSettings } from '@/lib/settings'
 
 export default function CirclePage() {
+  const settings = useSettings()
+  const fmt = (iso: string | null | undefined) => formatDateTime(iso, settingsDateTimeOptions(settings))
   const [friends, setFriends] = useState<HealthFriend[] | null>(null)
   const [status, setStatus] = useState<CrawlStatus | null>(null)
   const [articles, setArticles] = useState<ArticleRow[]>([])

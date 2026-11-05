@@ -10,7 +10,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { useSettingsRefresh } from '@/lib/settings'
+import { formatDateTime, settingsDateTimeOptions, type DateTimeOptions } from '@/lib/format'
+import { useSettings, useSettingsRefresh } from '@/lib/settings'
 
 interface BackupStatus {
   at: string
@@ -67,26 +68,27 @@ function fmtBytes(n: number | undefined): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
-function fmtTime(iso: string): string {
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
+function fmtTime(iso: string, opts: DateTimeOptions): string {
+  return formatDateTime(iso, opts)
 }
 
-/** 文件名里的时间是 UTC；展示时转成本地时间，和「最近一次」保持一致 */
-function fmtBackupName(name: string): string {
+/** 文件名里的时间是 UTC；展示时按 site.timezone / site.locale 转换 */
+function fmtBackupName(name: string, opts: DateTimeOptions): string {
   const m = /^(youlin-backup|pre-restore)-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.json\.gz$/.exec(name)
   if (!m) return name
   const kind = m[1] === 'pre-restore' ? '恢复前存档' : '备份'
   const at = new Date(`${m[2]}-${m[3]}-${m[4]}T${m[5]}:${m[6]}:${m[7]}Z`)
   return Number.isNaN(at.getTime())
     ? `${kind} · ${m[2]}-${m[3]}-${m[4]} ${m[5]}:${m[6]}:${m[7]} UTC`
-    : `${kind} · ${at.toLocaleString()}`
+    : `${kind} · ${formatDateTime(at.toISOString(), opts)}`
 }
 
 const TARGET_LABEL = { download: '下载', webdav: 'WebDAV', 'pre-restore': '恢复前存档' } as const
 
 export default function BackupPage() {
   const refreshSettings = useSettingsRefresh()
+  const settings = useSettings()
+  const dtOpts = settingsDateTimeOptions(settings)
   const [status, setStatus] = useState<StatusPayload | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [includeArticles, setIncludeArticles] = useState(false)
@@ -199,7 +201,7 @@ export default function BackupPage() {
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) },
       )
       const s = res.summary
-      const archived = res.preRestoreFile ? `；恢复前已存档 ${fmtBackupName(res.preRestoreFile)}` : ''
+      const archived = res.preRestoreFile ? `；恢复前已存档 ${fmtBackupName(res.preRestoreFile, dtOpts)}` : ''
       toast.success(`恢复完成：${s.groups} 个分组、${s.friends} 条友链、${s.applications} 条申请、${s.settings} 项设置${archived}`)
       refreshSettings()
       window.setTimeout(() => window.location.reload(), 900)
@@ -266,7 +268,7 @@ export default function BackupPage() {
       }
       if (!res.ok || !body.ok || !body.summary) throw new Error(body.error?.message ?? '恢复失败')
       const s = body.summary
-      const archived = body.preRestoreFile ? `；恢复前已存档 ${fmtBackupName(body.preRestoreFile)}` : ''
+      const archived = body.preRestoreFile ? `；恢复前已存档 ${fmtBackupName(body.preRestoreFile, dtOpts)}` : ''
       toast.success(`恢复完成：${s.groups} 个分组、${s.friends} 条友链、${s.applications} 条申请、${s.settings} 项设置${archived}`)
       refreshSettings()
       setConfirmOpen(false)
@@ -319,7 +321,7 @@ export default function BackupPage() {
           {status?.last && (
             <div className="flex flex-wrap items-center gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
               <History className="size-3.5" />
-              <span>最近一次：{fmtTime(status.last.at)}</span>
+              <span>最近一次：{fmtTime(status.last.at, dtOpts)}</span>
               <Badge variant="outline">{TARGET_LABEL[status.last.target]}</Badge>
               <span>{status.last.ok ? `成功（${fmtBytes(status.last.bytes)}）` : `失败：${status.last.error ?? '未知错误'}`}</span>
             </div>
@@ -359,7 +361,7 @@ export default function BackupPage() {
                 <div className="grid gap-1 rounded-md border p-2">
                   {davFiles.map((f) => (
                     <div key={f.name} className="flex flex-wrap items-center justify-between gap-2 rounded px-1 py-1 text-xs">
-                      <span className="min-w-0 truncate">{fmtBackupName(f.name)}</span>
+                      <span className="min-w-0 truncate">{fmtBackupName(f.name, dtOpts)}</span>
                       <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
                         {fmtBytes(f.size)}
                         <AlertDialog open={cloudTarget === f.name} onOpenChange={(o) => setCloudTarget(o ? f.name : null)}>
@@ -372,7 +374,7 @@ export default function BackupPage() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>从这个云端备份恢复？</AlertDialogTitle>
                               <AlertDialogDescription>
-                                会先把当前数据自动存档一份到 WebDAV，再清空并写入 {fmtBackupName(f.name)}。
+                                会先把当前数据自动存档一份到 WebDAV，再清空并写入 {fmtBackupName(f.name, dtOpts)}。
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -431,7 +433,7 @@ export default function BackupPage() {
                 {preview.includeArticles && <span>文章 <b>{preview.counts.articles}</b></span>}
               </div>
               <p className="text-xs text-muted-foreground">
-                导出于 {fmtTime(preview.exportedAt)}
+                导出于 {fmtTime(preview.exportedAt, dtOpts)}
                 {preview.appVersion ? ` · 来源版本 ${preview.appVersion}` : ''}
               </p>
               {!davConfigured && (
