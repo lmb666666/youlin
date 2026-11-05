@@ -5,11 +5,13 @@
 [![CI](https://github.com/lmb666666/youlin/actions/workflows/ci.yml/badge.svg)](https://github.com/lmb666666/youlin/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-友邻是一个自托管的友链和朋友圈管理台。可以一键部署到 Cloudflare Workers，也可以用 Docker Compose 跑在自己的服务器上（大陆访问更快）。
+友邻是一个自托管的友链和朋友圈管理台。用 Docker Compose 跑在自己的服务器上（大陆访问更快）。
+
+> **Workers 支持已在 v0.3.0 归档。** 主分支后续仅支持 Docker；Workers 代码保留在 [`archive/workers`](https://github.com/lmb666666/youlin/tree/archive/workers) 分支，迁移说明见 [归档说明](docs/archive/workers.md)。
 
 以前加友链需要修改数据文件、等构建，朋友圈要单独维护脚本，友链申请散落在评论区；现在这些工作都在一个网页里完成。博客端不需要安装任何东西，fetch 两个接口即可渲染。
 
-项目 MIT 开源，单实例部署：Cloudflare 免费额度内就能跑，自建服务器只需要一个容器和一块数据卷。
+项目 MIT 开源，单实例部署：一个容器、一块数据卷。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-dashboard-dark.png">
