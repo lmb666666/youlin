@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { ArrowUpRight, Braces, Check, Copy, ExternalLink, Send } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { api } from '@/lib/api'
+import { useSettings } from '@/lib/settings'
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false)
@@ -85,24 +85,12 @@ function Endpoint(props: {
 }
 
 export default function IntegrationPage() {
-  const [cfg, setCfg] = useState<{ cacheSeconds: number; corsOrigin: string } | null>(null)
+  const settings = useSettings()
   const origin = window.location.origin
-
-  const reload = useCallback(async () => {
-    try {
-      const { values } = await api<{ values: Record<string, unknown> }>('/api/admin/settings')
-      setCfg({
-        cacheSeconds: typeof values['api.cacheSeconds'] === 'number' ? values['api.cacheSeconds'] : 300,
-        corsOrigin: typeof values['api.corsOrigin'] === 'string' ? values['api.corsOrigin'] : '*',
-      })
-    } catch {
-      setCfg({ cacheSeconds: 300, corsOrigin: '*' })
-    }
-  }, [])
-
-  useEffect(() => {
-    void reload()
-  }, [reload])
+  const cfg = {
+    cacheSeconds: typeof settings['api.cacheSeconds'] === 'number' ? (settings['api.cacheSeconds'] as number) : 300,
+    corsOrigin: typeof settings['api.corsOrigin'] === 'string' ? (settings['api.corsOrigin'] as string) : '*',
+  }
 
   const linksSample = `const res = await fetch('${origin}/api/links')
 const { groups } = await res.json()

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { Cable, DatabaseBackup, Inbox, LayoutDashboard, Link2, LogOut, Monitor, Moon, Rss, HeartPulse, Settings, Sun, UserRoundPlus } from 'lucide-react'
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { api, ApiError } from '@/lib/api'
+import { useMe } from '@/lib/queries'
 import { SettingsProvider, useSettings } from '@/lib/settings'
 import { useTheme } from '@/lib/theme'
 
@@ -37,22 +38,13 @@ function AdminLayoutInner() {
   const location = useLocation()
   const { theme, setTheme } = useTheme()
   const settings = useSettings()
-  const [auth, setAuth] = useState<'checking' | 'ok' | 'error'>('checking')
-
-  const checkAuth = useCallback(() => {
-    setAuth('checking')
-    api('/api/admin/me')
-      .then(() => setAuth('ok'))
-      .catch((err) => {
-        // 401 已由 api() 跳转登录页，避免错误页闪一下
-        if (err instanceof ApiError && err.status === 401) return
-        setAuth('error')
-      })
-  }, [])
-
-  useEffect(() => {
-    checkAuth()
-  }, [checkAuth])
+  const me = useMe()
+  // 401 已由 api() 跳转登录页，保持 checking 避免错误页闪一下
+  const auth = me.isSuccess
+    ? 'ok'
+    : me.isPending || (me.error instanceof ApiError && me.error.status === 401)
+      ? 'checking'
+      : 'error'
 
   // ui.theme：浏览器无显式选择时，采用服务端设置（本地偏好优先）
   useEffect(() => {
@@ -81,7 +73,7 @@ function AdminLayoutInner() {
     return (
       <div className="flex min-h-svh flex-col items-center justify-center gap-3 p-6 text-center">
         <p className="text-sm text-muted-foreground">无法连接管理 API，请检查服务是否正常。</p>
-        <Button variant="outline" onClick={checkAuth}>重试</Button>
+        <Button variant="outline" onClick={() => void me.refetch()}>重试</Button>
       </div>
     )
   }

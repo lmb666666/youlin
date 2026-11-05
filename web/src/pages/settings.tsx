@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, useId } from 'react'
+import { useCallback, useMemo, useState, useId } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Download, RotateCcw, Save, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -13,7 +14,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { api, type SettingsSchemaField, type SettingsSchemaGroup } from '@/lib/api'
+import { api, type SettingsSchemaField } from '@/lib/api'
+import { useSettingsQuery, useSettingsSchemaQuery } from '@/lib/queries'
+import { queryKeys } from '@/lib/query'
+import { useQueryErrorToast } from '@/lib/query-error'
 import { useSettingsRefresh } from '@/lib/settings'
 
 type Values = Record<string, unknown>
@@ -52,35 +56,23 @@ function StringListInput({
 }
 
 export default function SettingsPage() {
+  const client = useQueryClient()
   const refreshSettings = useSettingsRefresh()
-  const [schema, setSchema] = useState<SettingsSchemaGroup[] | null>(null)
-  const [values, setValues] = useState<Values | null>(null)
-  const [dirty, setDirty] = useState<Values>({})
+  const schemaQuery = useSettingsSchemaQuery()
+  const settingsQuery = useSettingsQuery()
+  const [draft, setDraft] = useState<Values>({})
   const [invalidKeys, setInvalidKeys] = useState<Set<string>>(new Set())
-  const [busy, setBusy] = useState(false)
+  useQueryErrorToast(schemaQuery.error ?? settingsQuery.error)
 
-  const reload = useCallback(async () => {
-    try {
-      const s = await api<{ groups: SettingsSchemaGroup[] }>('/api/admin/settings/schema')
-      const v = await api<{ values: Values }>('/api/admin/settings')
-      setSchema(s.groups)
-      setValues(v.values)
-      setDirty({})
-      setInvalidKeys(new Set())
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '加载设置失败')
-    }
-  }, [])
-
-  useEffect(() => {
-    void reload()
-  }, [reload])
-
-  const sendable = useMemo(() => Object.entries(dirty).filter(([, v]) => v !== undefined), [dirty])
+  const schema = schemaQuery.data?.groups
+  const values = useMemo(
+    () => ({ ...(settingsQuery.data?.values ?? {}), ...draft }),
+    [settingsQuery.data, draft],
+  )
+  const sendable = useMemo(() => Object.entries(draft).filter(([, v]) => v !== undefined), [draft])
 
   function setField(key: string, value: unknown) {
-    setValues((v) => (v ? { ...v, [key]: value } : v))
-    setDirty((d) => ({ ...d, [key]: value }))
+    setDraft((d) => ({ ...d, [key]: value }))
   }
 
   const markInvalid = useCallback((key: string, invalid: boolean) => {
@@ -92,24 +84,36 @@ export default function SettingsPage() {
     })
   }, [])
 
-  async function save() {
-    if (sendable.length === 0 || busy || invalidKeys.size > 0) return
-    setBusy(true)
-    try {
-      const res = await api<{ values: Values }>('/api/admin/settings', {
-        method: 'PUT',
-        body: JSON.stringify(Object.fromEntries(sendable)),
-      })
-      setValues(res.values)
-      setDirty({})
+  const saveMutation = useMutation({
+    mutationFn: () => api('/api/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify(Object.fromEntries(sendable)),
+    }),
+    onSuccess: async () => {
+      setDraft({})
       setInvalidKeys(new Set())
+      await client.invalidateQueries({ queryKey: queryKeys.settings })
       refreshSettings()
       toast.success(`已保存 ${sendable.length} 项设置`)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '保存失败')
-    } finally {
-      setBusy(false)
-    }
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '保存失败'),
+  })
+
+  const importMutation = useMutation({
+    mutationFn: (body: Values) => api('/api/admin/settings/import', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: async () => {
+      toast.success('配置已导入（整表替换）')
+      setDraft({})
+      setInvalidKeys(new Set())
+      await client.invalidateQueries({ queryKey: queryKeys.settings })
+      refreshSettings()
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '导入失败'),
+  })
+
+  function save() {
+    if (sendable.length === 0 || saveMutation.isPending || invalidKeys.size > 0) return
+    saveMutation.mutate()
   }
 
   function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -118,10 +122,7 @@ export default function SettingsPage() {
     void file.text().then(async (t) => {
       try {
         const body = JSON.parse(t) as Values
-        await api('/api/admin/settings/import', { method: 'POST', body: JSON.stringify(body) })
-        toast.success('配置已导入（整表替换）')
-        void reload()
-        refreshSettings()
+        importMutation.mutate(body)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : '导入失败')
       }
@@ -129,7 +130,7 @@ export default function SettingsPage() {
     e.target.value = ''
   }
 
-  if (!schema || !values) {
+  if (!schema || settingsQuery.isPending) {
     return (
       <div className="mx-auto grid w-full max-w-3xl gap-4 [&>*]:min-w-0">
         <Skeleton className="h-16" />
@@ -170,7 +171,7 @@ export default function SettingsPage() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-          <Button onClick={() => void save()} disabled={sendable.length === 0 || busy || invalidKeys.size > 0}>
+          <Button onClick={() => void save()} disabled={sendable.length === 0 || saveMutation.isPending || invalidKeys.size > 0}>
             <Save /> 保存{sendable.length > 0 ? `（${sendable.length}）` : ''}
           </Button>
         </div>
@@ -192,7 +193,7 @@ export default function SettingsPage() {
                 key={f.key}
                 field={f}
                 value={values[f.key]}
-                dirty={f.key in dirty}
+                dirty={f.key in draft}
                 onChange={(v) => setField(f.key, v)}
                 onInvalidChange={(invalid) => markInvalid(f.key, invalid)}
               />

@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { toast } from 'sonner'
 import {
   ArrowRight, FileText, HeartPulse, Inbox, Link2, Newspaper,
   Rss, ShieldQuestion, TriangleAlert, UserRoundPlus,
@@ -8,7 +6,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { api, type AdminStats, type Application, type ArticleRow, type CrawlStatus } from '@/lib/api'
+import { useAdminStatsQuery, useApplicationsQuery, useArticlesQuery, useCrawlStatusQuery } from '@/lib/queries'
+import { useQueryErrorToast } from '@/lib/query-error'
 import { formatDateTime, settingsDateTimeOptions } from '@/lib/format'
 import { useSettings } from '@/lib/settings'
 
@@ -45,33 +44,14 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const settings = useSettings()
   const fmt = (iso: string | null | undefined) => formatDateTime(iso, settingsDateTimeOptions(settings))
-  const [stats, setStats] = useState<AdminStats | null>(null)
-  const [status, setStatus] = useState<CrawlStatus | null>(null)
-  const [articles, setArticles] = useState<ArticleRow[]>([])
-  const [pending, setPending] = useState<Application[]>([])
+  const statsQuery = useAdminStatsQuery()
+  const statusQuery = useCrawlStatusQuery()
+  const articlesQuery = useArticlesQuery()
+  const pendingQuery = useApplicationsQuery('pending')
 
-  const reload = useCallback(async () => {
-    try {
-      const [s, st, a, p] = await Promise.all([
-        api<AdminStats>('/api/admin/stats'),
-        api<CrawlStatus>('/api/admin/crawl/status'),
-        api<{ articles: ArticleRow[] }>('/api/admin/articles'),
-        api<{ applications: Application[] }>('/api/admin/applications?status=pending'),
-      ])
-      setStats(s)
-      setStatus(st)
-      setArticles(a.articles.slice(0, 6))
-      setPending(p.applications.slice(0, 4))
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '加载失败')
-    }
-  }, [])
+  useQueryErrorToast(statsQuery.error ?? statusQuery.error ?? articlesQuery.error ?? pendingQuery.error)
 
-  useEffect(() => {
-    void reload()
-  }, [reload])
-
-  if (!stats || !status) {
+  if (statsQuery.isPending || statusQuery.isPending || articlesQuery.isPending || pendingQuery.isPending) {
     return (
       <div className="grid gap-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -80,6 +60,14 @@ export default function DashboardPage() {
         <Skeleton className="h-64" />
       </div>
     )
+  }
+
+  const stats = statsQuery.data
+  const status = statusQuery.data
+  const articles = (articlesQuery.data?.articles ?? []).slice(0, 6)
+  const pending = (pendingQuery.data?.applications ?? []).slice(0, 4)
+  if (!stats || !status) {
+    return <p className="text-sm text-muted-foreground">数据加载失败，请刷新重试。</p>
   }
 
   return (

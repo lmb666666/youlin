@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Download, HeartPulse, Play } from 'lucide-react'
 import {
@@ -16,6 +17,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { api, type HealthFriend } from '@/lib/api'
+import { useCrawlStatusQuery, useHealthQuery } from '@/lib/queries'
+import { queryKeys } from '@/lib/query'
+import { useQueryErrorToast } from '@/lib/query-error'
 import { csvCell } from '@/lib/csv'
 import { formatDateTime, settingsDateTimeOptions } from '@/lib/format'
 import { useSettings } from '@/lib/settings'
@@ -122,78 +126,58 @@ function toCsv(friends: HealthFriend[]): string {
 }
 
 export default function HealthPage() {
-  const [friends, setFriends] = useState<HealthFriend[] | null>(null)
+  const client = useQueryClient()
+  const healthQuery = useHealthQuery()
   const [running, setRunning] = useState(false)
   const [sorting, setSorting] = useState<SortingState>([])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 })
-  const pollRef = useRef<number | null>(null)
-
-  const reload = useCallback(async () => {
-    try {
-      const h = await api<{ friends: HealthFriend[] }>('/api/admin/health')
-      setFriends(h.friends)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '加载失败')
-    }
-  }, [])
-
-  const attempts = useRef(0)
-
-  const pollStatus = useCallback(async () => {
-    try {
-      const s = await api<{ running: boolean; round: { kind: string; done: number; total: number } | null }>(
-        '/api/admin/crawl/status',
-      )
-      if (s.running) return // 任何轮转运行中都继续等（不区分 kind，避免把 crawl 轮转误判为完成）
-      attempts.current++
-      if (s.round?.kind === 'health') {
-        setRunning(false)
-        if (pollRef.current) {
-          window.clearInterval(pollRef.current)
-          pollRef.current = null
-          toast.success('体检完成')
-          void reload()
-        }
-        return
-      }
-      // 未见体检轮转记录（可能启动竞态）：有限次重试后放弃
-      if (attempts.current >= 15) {
-        setRunning(false)
-        if (pollRef.current) {
-          window.clearInterval(pollRef.current)
-          pollRef.current = null
-          toast.info('体检状态未知，请手动刷新')
-          void reload()
-        }
-      }
-    } catch { /* 忽略轮询错误 */ }
-  }, [reload])
+  const statusQuery = useCrawlStatusQuery(running)
+  const attempted = useRef(0)
+  const sawRunning = useRef(false)
+  useQueryErrorToast(healthQuery.error)
 
   useEffect(() => {
-    void reload()
-    return () => {
-      if (pollRef.current) window.clearInterval(pollRef.current)
+    if (!running) return
+    const s = statusQuery.data
+    if (!s) return
+    if (s.running) {
+      sawRunning.current = true
+      return
     }
-  }, [reload])
+    if (sawRunning.current || s.round?.kind === 'health') {
+      setRunning(false)
+      sawRunning.current = false
+      toast.success('体检完成')
+      void client.invalidateQueries({ queryKey: queryKeys.health })
+      return
+    }
+    // 未见体检轮转记录（可能启动竞态）：有限次重试后放弃
+    attempted.current++
+    if (attempted.current >= 15) {
+      setRunning(false)
+      toast.info('体检状态未知，请手动刷新')
+      void client.invalidateQueries({ queryKey: queryKeys.health })
+    }
+  }, [running, statusQuery.data, client])
 
-  async function runAll() {
-    if (running) return
-    try {
-      const r = await api<{ started: number }>('/api/admin/health/run', { method: 'POST' })
+  const runMutation = useMutation({
+    mutationFn: () => api<{ started: number }>('/api/admin/health/run', { method: 'POST' }),
+    onSuccess: (r) => {
       if (r.started === 0) {
         toast.info('没有需要体检的友链')
         return
       }
       toast.success(`已开始体检 ${r.started} 个站点`)
-      attempts.current = 0
+      attempted.current = 0
+      sawRunning.current = false
       setRunning(true)
-      pollRef.current = window.setInterval(() => void pollStatus(), 1500)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '触发失败')
-    }
-  }
+      void client.invalidateQueries({ queryKey: queryKeys.crawlStatus })
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '触发失败'),
+  })
 
   function downloadCsv() {
+    const friends = healthQuery.data?.friends
     if (!friends) return
     const blob = new Blob([toCsv(friends)], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -210,12 +194,13 @@ export default function HealthPage() {
     [settings],
   )
   const columns = useMemo(() => createColumns(fmt), [fmt])
+  const friends = healthQuery.data?.friends ?? []
   const pageSize = Math.max(1, typeof settings['ui.pageSize'] === 'number' ? (settings['ui.pageSize'] as number) : 20)
   // 分页大小或行数变化后，页码可能越界（分页器会隐藏，届时无从翻回），这里夹住
-  const pageCount = Math.max(1, Math.ceil((friends ?? []).length / pageSize))
+  const pageCount = Math.max(1, Math.ceil(friends.length / pageSize))
   const pageIndex = Math.min(pagination.pageIndex, pageCount - 1)
   const table = useReactTable({
-    data: friends ?? [],
+    data: friends,
     columns,
     state: { sorting, pagination: { pageSize, pageIndex } },
     onSortingChange: setSorting,
@@ -225,7 +210,7 @@ export default function HealthPage() {
     getPaginationRowModel: getPaginationRowModel(),
   })
 
-  if (!friends) {
+  if (healthQuery.isPending) {
     return (
       <div className="grid gap-4">
         <Skeleton className="h-16" />
@@ -247,8 +232,8 @@ export default function HealthPage() {
           <Button variant="outline" onClick={downloadCsv} disabled={friends.length === 0}>
             <Download /> 导出 CSV
           </Button>
-          <Button onClick={() => void runAll()} disabled={running}>
-            <Play /> {running ? '体检进行中…' : '全量检测'}
+          <Button onClick={() => runMutation.mutate()} disabled={running || runMutation.isPending}>
+            <Play /> {running || runMutation.isPending ? '体检进行中…' : '全量检测'}
           </Button>
         </div>
       </div>

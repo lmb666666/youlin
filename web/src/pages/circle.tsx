@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Hammer, Newspaper, Play, RefreshCw, Rss, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -7,114 +8,81 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { api, type ArticleRow, type CrawlStatus, type HealthFriend } from '@/lib/api'
+import { api } from '@/lib/api'
+import { useArticlesQuery, useCrawlStatusQuery, useHealthQuery } from '@/lib/queries'
+import { queryKeys } from '@/lib/query'
+import { useQueryErrorToast } from '@/lib/query-error'
 import { formatDateTime, settingsDateTimeOptions } from '@/lib/format'
 import { useSettings } from '@/lib/settings'
 
 export default function CirclePage() {
   const settings = useSettings()
   const fmt = (iso: string | null | undefined) => formatDateTime(iso, settingsDateTimeOptions(settings))
-  const [friends, setFriends] = useState<HealthFriend[] | null>(null)
-  const [status, setStatus] = useState<CrawlStatus | null>(null)
-  const [articles, setArticles] = useState<ArticleRow[]>([])
-  const [busy, setBusy] = useState(false)
+  const client = useQueryClient()
+  const healthQuery = useHealthQuery()
+  const statusQuery = useCrawlStatusQuery()
+  const articlesQuery = useArticlesQuery()
   const [singleBusy, setSingleBusy] = useState<number | null>(null)
-  const [rebuildEnabled, setRebuildEnabled] = useState(false)
   const [rebuildBusy, setRebuildBusy] = useState(false)
+  const rebuildEnabled = settings['rebuild.enabled'] === true
 
-  const reload = useCallback(async () => {
-    try {
-      const [h, s, a, cfg] = await Promise.all([
-        api<{ friends: HealthFriend[] }>('/api/admin/health'),
-        api<CrawlStatus>('/api/admin/crawl/status'),
-        api<{ articles: ArticleRow[] }>('/api/admin/articles'),
-        api<{ values: Record<string, unknown> }>('/api/admin/settings'),
-      ])
-      setFriends(h.friends)
-      setStatus(s)
-      setArticles(a.articles.slice(0, 20))
-      setRebuildEnabled(cfg.values['rebuild.enabled'] === true)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '加载失败')
+  useQueryErrorToast(healthQuery.error ?? statusQuery.error ?? articlesQuery.error)
+
+  const status = statusQuery.data
+  const wasRunning = useRef(false)
+  useEffect(() => {
+    // 轮询检测到本轮结束：刷新体检/文章列表（状态本身已由 query 更新）
+    if (wasRunning.current && status && !status.running) {
+      void client.invalidateQueries({ queryKey: queryKeys.health })
+      void client.invalidateQueries({ queryKey: queryKeys.articles })
     }
-  }, [])
+    wasRunning.current = Boolean(status?.running)
+  }, [status, client])
 
-  useEffect(() => {
-    void reload()
-  }, [reload])
-
-  // 全量轮转进行中 → 轮询进度；轮询到完成时刷新数据（完成检测放在回调里，
-  // 放在 effect body 里会因清理函数先执行而永远走不到）
-  useEffect(() => {
-    if (!status?.running) return
-    const id = window.setInterval(() => {
-      void api<CrawlStatus>('/api/admin/crawl/status')
-        .then((s) => {
-          setStatus(s)
-          if (!s.running) {
-            window.clearInterval(id)
-            void reload()
-          }
-        })
-        .catch(() => {})
-    }, 1500)
-    return () => window.clearInterval(id)
-  }, [status?.running, reload])
-
-  async function triggerCrawl() {
-    if (busy) return
-    setBusy(true)
-    try {
-      const r = await api<{ started: number }>('/api/admin/crawl', { method: 'POST' })
+  const crawlMutation = useMutation({
+    mutationFn: () => api<{ started: number }>('/api/admin/crawl', { method: 'POST' }),
+    onSuccess: (r) => {
       toast.success(r.started > 0 ? `已开始抓取 ${r.started} 个源` : '没有待抓取的友链')
-      const s = await api<CrawlStatus>('/api/admin/crawl/status')
-      setStatus(s)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '触发失败')
-    } finally {
-      setBusy(false)
-    }
-  }
+      void client.invalidateQueries({ queryKey: queryKeys.crawlStatus })
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '触发失败'),
+  })
 
-  async function triggerRebuild() {
-    if (rebuildBusy) return
-    setRebuildBusy(true)
-    try {
-      const r = await api<{ ok: boolean; provider: string }>('/api/admin/rebuild', { method: 'POST', body: JSON.stringify({ reason: 'manual' }) })
-      toast.success(`已触发重建（${r.provider}）`)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '触发失败')
-    } finally {
-      setRebuildBusy(false)
-    }
-  }
+  const rebuildMutation = useMutation({
+    mutationFn: () =>
+      api<{ ok: boolean; provider: string }>('/api/admin/rebuild', {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'manual' }),
+      }),
+    onMutate: () => setRebuildBusy(true),
+    onSettled: () => setRebuildBusy(false),
+    onSuccess: (r) => toast.success(`已触发重建（${r.provider}）`),
+    onError: (err) => toast.error(err instanceof Error ? err.message : '触发失败'),
+  })
 
-  async function crawlOne(id: number) {
-    if (singleBusy !== null) return
-    setSingleBusy(id)
-    try {
-      const r = await api<{ outcome: string }>(`/api/admin/crawl/${id}`, { method: 'POST' })
+  const crawlOneMutation = useMutation({
+    mutationFn: (id: number) => api<{ outcome: string }>(`/api/admin/crawl/${id}`, { method: 'POST' }),
+    onMutate: (id) => setSingleBusy(id),
+    onSettled: () => setSingleBusy(null),
+    onSuccess: (r) => {
       const text = { ok: '成功', notModified: '无更新（304）', failed: '失败', skipped: '跳过' }[r.outcome] ?? r.outcome
       toast.info(`抓取结果：${text}`)
-      void reload()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '抓取失败')
-    } finally {
-      setSingleBusy(null)
-    }
-  }
+      void client.invalidateQueries({ queryKey: queryKeys.health })
+      void client.invalidateQueries({ queryKey: queryKeys.articles })
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '抓取失败'),
+  })
 
-  async function deleteArticle(id: number) {
-    try {
-      await api(`/api/admin/articles/${id}`, { method: 'DELETE' })
+  const deleteArticleMutation = useMutation({
+    mutationFn: (id: number) => api(`/api/admin/articles/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
       toast.success('文章已删除')
-      void reload()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '删除失败')
-    }
-  }
+      void client.invalidateQueries({ queryKey: queryKeys.articles })
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '删除失败'),
+  })
 
-  if (!friends || !status) {
+  if (healthQuery.isPending || statusQuery.isPending || articlesQuery.isPending) {
     return (
       <div className="grid gap-4">
         <Skeleton className="h-16" />
@@ -123,8 +91,11 @@ export default function CirclePage() {
     )
   }
 
+  const friends = healthQuery.data?.friends ?? []
+  const articles = (articlesQuery.data?.articles ?? []).slice(0, 20)
   const sources = friends.filter((f) => f.status === 'active' && f.inCircle && f.feed)
-  const progress = status.round && status.round.total > 0 ? Math.round((status.round.done / status.round.total) * 100) : 0
+  const progress = status?.round && status.round.total > 0 ? Math.round((status.round.done / status.round.total) * 100) : 0
+  if (!status) return <p className="text-sm text-muted-foreground">数据加载失败，请刷新重试。</p>
 
   return (
     <div className="grid gap-4 [&>*]:min-w-0">
@@ -137,12 +108,12 @@ export default function CirclePage() {
         </div>
         <div className="flex gap-2">
           {rebuildEnabled && (
-            <Button variant="outline" onClick={() => void triggerRebuild()} disabled={rebuildBusy}>
+            <Button variant="outline" onClick={() => rebuildMutation.mutate()} disabled={rebuildBusy}>
               <Hammer /> {rebuildBusy ? '触发中…' : '重建站点'}
             </Button>
           )}
-          <Button onClick={() => void triggerCrawl()} disabled={busy || status.running}>
-            <Play /> {status.running ? '抓取进行中…' : '手动抓取一轮'}
+          <Button onClick={() => crawlMutation.mutate()} disabled={crawlMutation.isPending || status.running}>
+            <Play /> {crawlMutation.isPending || status.running ? '抓取进行中…' : '手动抓取一轮'}
           </Button>
         </div>
       </div>
@@ -224,7 +195,7 @@ export default function CirclePage() {
                         <TableCell className="text-xs">{fmt(st?.lastOkAt)}</TableCell>
                         <TableCell className="text-xs">{fmt(st?.nextCheckAt)}</TableCell>
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" className="size-8" disabled={singleBusy !== null} onClick={() => void crawlOne(f.id)} aria-label="抓取此源">
+                          <Button variant="ghost" size="icon" className="size-8" disabled={singleBusy !== null} onClick={() => crawlOneMutation.mutate(f.id)} aria-label="抓取此源">
                             <RefreshCw className={`size-3.5 ${singleBusy === f.id ? 'animate-spin' : ''}`} />
                           </Button>
                         </TableCell>
@@ -268,7 +239,7 @@ export default function CirclePage() {
                     <TableCell className="hidden text-xs sm:table-cell">{a.friendAuthor}</TableCell>
                     <TableCell className="hidden text-xs md:table-cell">{fmt(a.publishedAt)}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive" onClick={() => void deleteArticle(a.id)} aria-label="删除文章">
+                      <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive" onClick={() => deleteArticleMutation.mutate(a.id)} aria-label="删除文章">
                         <Trash2 className="size-3.5" />
                       </Button>
                     </TableCell>

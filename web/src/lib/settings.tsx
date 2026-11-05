@@ -1,36 +1,34 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import { api } from './api'
+import { createContext, useCallback, useContext, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useSettingsQuery } from './queries'
+import { queryKeys } from './query'
+import type { SettingsValues } from './api'
 
 /**
- * 管理台设置上下文：登录后拉取一次全量设置，各页面按需消费
+ * 管理台设置上下文：全局只保留一份 query 缓存，各页面按需消费
  * （如 ui.pageSize 分页、ui.accentColor 主题色）。
- * 设置页保存或导入配置后调用 useSettingsRefresh() 返回的函数重新拉取。
+ * 设置页保存或导入后调用 useSettingsRefresh() 让缓存失效。
  */
 
-const SettingsContext = createContext<Record<string, unknown>>({})
+const SettingsContext = createContext<SettingsValues>({})
 const RefreshContext = createContext<() => void>(() => {})
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [values, setValues] = useState<Record<string, unknown>>({})
+  const { data } = useSettingsQuery()
+  const client = useQueryClient()
 
   const refresh = useCallback(() => {
-    api<{ values: Record<string, unknown> }>('/api/admin/settings')
-      .then((r) => setValues(r.values))
-      .catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    refresh()
-  }, [refresh])
+    void client.invalidateQueries({ queryKey: queryKeys.settings })
+  }, [client])
 
   return (
-    <SettingsContext value={values}>
+    <SettingsContext value={data?.values ?? {}}>
       <RefreshContext value={refresh}>{children}</RefreshContext>
     </SettingsContext>
   )
 }
 
-export function useSettings(): Record<string, unknown> {
+export function useSettings(): SettingsValues {
   return useContext(SettingsContext)
 }
 
