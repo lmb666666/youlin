@@ -1,4 +1,4 @@
-import { useEffect, useId } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
-import { queryKeys } from '@/lib/query'
+import { invalidateLinkData } from '@/lib/query'
 import { Field } from './field'
 
 // 表单里的可选 URL 用空串表示“未填写”，提交时再归一为 null
@@ -23,7 +23,10 @@ const optionalFormUrl = z.union([httpUrl, z.literal('')]).optional().nullable()
 const friendFormSchema = friendCreateSchema
   .omit({ archs: true })
   .extend({
-    archsText: z.string().max(2000),
+    archsText: z.string().max(2000).refine((v) => {
+      const arr = v.split(/[,，、]/).map((x) => x.trim()).filter(Boolean)
+      return arr.length <= 20 && arr.every((x) => x.length <= 100)
+    }, '最多 20 项，每项不超过 100 字'),
     feed: optionalFormUrl,
     icon: optionalFormUrl,
     avatar: optionalFormUrl,
@@ -83,6 +86,7 @@ export function FriendDialog(props: {
   const client = useQueryClient()
   const groupFieldId = useId()
   const statusFieldId = useId()
+  const session = useRef(0)
   const form = useForm<FriendFormValues>({
     resolver: zodResolver(friendFormSchema),
     defaultValues: valuesOf(null, null, undefined),
@@ -95,12 +99,13 @@ export function FriendDialog(props: {
   }, [open, editing, presetGroupId, firstGroupId, form])
 
   const probeMutation = useMutation({
-    mutationFn: (values: FriendFormValues) =>
+    mutationFn: ({ values }: { values: FriendFormValues; session: number }) =>
       api<ProbeResponse>('/api/admin/friends/probe', {
         method: 'POST',
         body: JSON.stringify({ link: values.link, feed: values.feed || null }),
       }),
-    onSuccess: (res) => {
+    onSuccess: (res, vars) => {
+      if (vars.session !== session.current) return
       const p = res.probe
       const current = form.getValues()
       let filled = 0
@@ -136,9 +141,7 @@ export function FriendDialog(props: {
     },
     onSuccess: () => {
       toast.success(editing ? '友链已更新' : '友链已添加')
-      void client.invalidateQueries({ queryKey: queryKeys.friends })
-      void client.invalidateQueries({ queryKey: queryKeys.groups })
-      void client.invalidateQueries({ queryKey: queryKeys.stats })
+      invalidateLinkData(client)
       onOpenChange(false)
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : '保存失败'),
@@ -189,32 +192,35 @@ export function FriendDialog(props: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="站点名 *" error={form.formState.errors.title?.message}>
-              <Input {...form.register('title')} placeholder="站点名" />
+              <Input {...form.register('title')} maxLength={200} placeholder="站点名" />
             </Field>
             <Field label="订阅日期 *" error={form.formState.errors.since?.message}>
               <Input type="date" {...form.register('since')} />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="作者">
-              <Input {...form.register('author')} placeholder="留空则显示站点名" />
+            <Field label="作者" error={form.formState.errors.author?.message}>
+              <Input {...form.register('author')} maxLength={200} placeholder="留空则显示站点名" />
             </Field>
-            <Field label="趣称">
-              <Input {...form.register('nickname')} placeholder="网站趣称" />
+            <Field label="趣称" error={form.formState.errors.nickname?.message}>
+              <Input {...form.register('nickname')} maxLength={200} placeholder="网站趣称" />
             </Field>
           </div>
           <Field label="站点链接 *" error={form.formState.errors.link?.message}>
-            <Input {...form.register('link')} placeholder="https://…" />
+            <Input {...form.register('link')} maxLength={2048} placeholder="https://…" />
+          </Field>
+          <Field label="简介" error={form.formState.errors.desc?.message}>
+            <Textarea {...form.register('desc')} rows={2} maxLength={2000} />
           </Field>
           <Field label="订阅源 feed" error={form.formState.errors.feed?.message}>
-            <Input {...form.register('feed')} placeholder="https://…/atom.xml" />
+            <Input {...form.register('feed')} maxLength={2048} placeholder="https://…/atom.xml" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="图标 icon" error={form.formState.errors.icon?.message}>
-              <Input {...form.register('icon')} placeholder="favicon 地址" />
+              <Input {...form.register('icon')} maxLength={2048} placeholder="favicon 地址" />
             </Field>
             <Field label="头像 avatar" error={form.formState.errors.avatar?.message}>
-              <Input {...form.register('avatar')} placeholder="头像地址" />
+              <Input {...form.register('avatar')} maxLength={2048} placeholder="头像地址" />
             </Field>
           </div>
           {values.avatar && (
@@ -224,10 +230,10 @@ export function FriendDialog(props: {
             </div>
           )}
           <Field label="架构（逗号分隔）">
-            <Input {...form.register('archsText')} placeholder="Nuxt, VitePress" />
+            <Input {...form.register('archsText')} maxLength={2000} placeholder="Nuxt, VitePress" />
           </Field>
           <Field label="备注">
-            <Textarea {...form.register('comment')} rows={2} />
+            <Textarea {...form.register('comment')} rows={2} maxLength={2000} />
           </Field>
           <Controller
             control={form.control}
@@ -243,7 +249,7 @@ export function FriendDialog(props: {
             <Button
               type="button"
               variant="outline"
-              onClick={() => probeMutation.mutate(form.getValues())}
+              onClick={() => probeMutation.mutate({ values: form.getValues(), session: session.current })}
               disabled={probeMutation.isPending || !values.link}
               className="mr-auto"
             >

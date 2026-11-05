@@ -4,6 +4,7 @@ import {
   Rss, ShieldQuestion, TriangleAlert, UserRoundPlus,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { QueryError } from '@/components/query-error'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAdminStatsQuery, useApplicationsQuery, useArticlesQuery, useCrawlStatusQuery } from '@/lib/queries'
@@ -67,7 +68,13 @@ export default function DashboardPage() {
   const articles = (articlesQuery.data?.articles ?? []).slice(0, 6)
   const pending = (pendingQuery.data?.applications ?? []).slice(0, 4)
   if (!stats || !status) {
-    return <p className="text-sm text-muted-foreground">数据加载失败，请刷新重试。</p>
+    const err = statsQuery.error ?? statusQuery.error
+    return (
+      <QueryError
+        message={err instanceof Error ? err.message : '总览数据加载失败'}
+        onRetry={() => { void statsQuery.refetch(); void statusQuery.refetch(); void articlesQuery.refetch(); void pendingQuery.refetch() }}
+      />
+    )
   }
 
   return (

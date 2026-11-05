@@ -13,10 +13,12 @@ import {
 } from '@tanstack/react-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { QueryError } from '@/components/query-error'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { api, type HealthFriend } from '@/lib/api'
+import { downloadBlob } from '@/lib/download'
 import { useCrawlStatusQuery, useHealthQuery } from '@/lib/queries'
 import { queryKeys } from '@/lib/query'
 import { useQueryErrorToast } from '@/lib/query-error'
@@ -134,6 +136,7 @@ export default function HealthPage() {
   const statusQuery = useCrawlStatusQuery(running)
   const attempted = useRef(0)
   const sawRunning = useRef(false)
+  const baselineRound = useRef<string | null>(null)
   useQueryErrorToast(healthQuery.error)
 
   useEffect(() => {
@@ -144,7 +147,9 @@ export default function HealthPage() {
       sawRunning.current = true
       return
     }
-    if (sawRunning.current || s.round?.kind === 'health') {
+    // 上一轮结束后 round.kind 仍是 health；用启动时记录的 startedAt 区分新旧轮次（避免时钟偏差）
+    const thisRound = s.round?.kind === 'health' && s.round.startedAt !== baselineRound.current
+    if (sawRunning.current || thisRound) {
       setRunning(false)
       sawRunning.current = false
       toast.success('体检完成')
@@ -170,6 +175,7 @@ export default function HealthPage() {
       toast.success(`已开始体检 ${r.started} 个站点`)
       attempted.current = 0
       sawRunning.current = false
+      baselineRound.current = statusQuery.data?.round?.startedAt ?? null
       setRunning(true)
       void client.invalidateQueries({ queryKey: queryKeys.crawlStatus })
     },
@@ -180,12 +186,7 @@ export default function HealthPage() {
     const friends = healthQuery.data?.friends
     if (!friends) return
     const blob = new Blob([toCsv(friends)], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `youlin-health-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadBlob(blob, `youlin-health-${new Date().toISOString().slice(0, 10)}.csv`)
   }
 
   const settings = useSettings()
@@ -209,6 +210,10 @@ export default function HealthPage() {
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   })
+
+  if (healthQuery.isError) {
+    return <QueryError message={healthQuery.error instanceof Error ? healthQuery.error.message : '体检数据加载失败'} onRetry={() => void healthQuery.refetch()} />
+  }
 
   if (healthQuery.isPending) {
     return (

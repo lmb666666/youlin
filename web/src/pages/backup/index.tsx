@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { BackupPreview, RestoreResponse } from '@youlin/contracts'
 import { api, readError } from '@/lib/api'
+import { downloadBlob } from '@/lib/download'
 import { useBackupStatusQuery, useDavFilesQuery } from '@/lib/queries'
 import { queryKeys } from '@/lib/query'
 import { useQueryErrorToast } from '@/lib/query-error'
@@ -54,12 +55,7 @@ export default function BackupPage() {
     onMutate: () => setBusy('download'),
     onSettled: () => setBusy(null),
     onSuccess: ({ blob, name }) => {
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = name
-      a.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(blob, name)
       toast.success(`备份已下载（${fmtBytes(blob.size)}）`)
       void client.invalidateQueries({ queryKey: queryKeys.backupStatus })
     },
@@ -202,6 +198,8 @@ export default function BackupPage() {
         status={status}
         files={davQuery.data?.files}
         error={davQuery.error instanceof Error ? davQuery.error.message : null}
+        statusError={statusQuery.error instanceof Error ? statusQuery.error.message : null}
+        onRetryStatus={() => void statusQuery.refetch()}
         busy={busy}
         cloudTarget={cloudTarget}
         dtOpts={dtOpts}

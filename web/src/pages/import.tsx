@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { api, type ImportResult } from '@/lib/api'
-import { queryKeys } from '@/lib/query'
+import { invalidateLinkData } from '@/lib/query'
 
 const importFormSchema = z.object({
   json: z.string().trim().min(1, '请粘贴或选择 JSON'),
@@ -34,9 +34,7 @@ export default function ImportPage() {
     onSuccess: (res) => {
       setResult(res)
       toast.success(`导入完成：新增 ${res.imported}，更新 ${res.updated}${res.skipped > 0 ? `，跳过 ${res.skipped}` : ''}`)
-      void client.invalidateQueries({ queryKey: queryKeys.groups })
-      void client.invalidateQueries({ queryKey: queryKeys.friends })
-      void client.invalidateQueries({ queryKey: queryKeys.stats })
+      invalidateLinkData(client)
     },
     onError: (err) => {
       if (err instanceof SyntaxError) toast.error('JSON 解析失败：' + err.message)

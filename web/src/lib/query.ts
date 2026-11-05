@@ -24,3 +24,10 @@ export const queryKeys = {
   backupStatus: ['backup', 'status'] as const,
   davFiles: ['backup', 'dav-files'] as const,
 }
+
+/** 友链/分组变更会级联影响朋友圈、体检与统计缓存 */
+export function invalidateLinkData(client: QueryClient): void {
+  for (const key of [queryKeys.friends, queryKeys.groups, queryKeys.stats, queryKeys.health, queryKeys.articles]) {
+    void client.invalidateQueries({ queryKey: key })
+  }
+}

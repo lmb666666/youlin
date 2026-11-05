@@ -15,6 +15,8 @@ export function WebdavCard(props: {
   status: BackupStatusResponse | undefined
   files: DavFile[] | undefined
   error: string | null
+  statusError: string | null
+  onRetryStatus: () => void
   busy: string | null
   cloudTarget: string | null
   dtOpts: DateTimeOptions
@@ -24,7 +26,7 @@ export function WebdavCard(props: {
   onCloudTargetChange: (name: string | null) => void
   onRestore: (name: string) => void
 }) {
-  const { status, files, error, busy, cloudTarget, dtOpts, onTest, onRun, onRefresh, onCloudTargetChange, onRestore } = props
+  const { status, files, error, statusError, onRetryStatus, busy, cloudTarget, dtOpts, onTest, onRun, onRefresh, onCloudTargetChange, onRestore } = props
   const configured = status?.webdav.configured ?? false
   return (
     <Card>
@@ -35,7 +37,12 @@ export function WebdavCard(props: {
         <CardDescription>地址、用户名与周期在设置页配置；密码写在 Secret（WEBDAV_PASSWORD）。</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 text-sm">
-        {!status ? (
+        {statusError ? (
+          <div className="grid gap-2">
+            <p className="text-muted-foreground">读取备份状态失败：{statusError}</p>
+            <Button variant="outline" size="sm" className="w-fit" onClick={onRetryStatus}>重试</Button>
+          </div>
+        ) : !status ? (
           <p className="text-muted-foreground">读取中…</p>
         ) : configured ? (
           <>

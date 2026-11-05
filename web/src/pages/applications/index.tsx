@@ -1,11 +1,19 @@
 import { useMemo, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Check, ExternalLink, Inbox, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { QueryError } from '@/components/query-error'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Application } from '@/lib/api'
 import { useApplicationsQuery, useGroupsQuery } from '@/lib/queries'
+import { api } from '@/lib/api'
 import { useQueryErrorToast } from '@/lib/query-error'
 import { formatDateTime, settingsDateTimeOptions } from '@/lib/format'
 import { useSettings } from '@/lib/settings'
@@ -26,11 +34,24 @@ export default function ApplicationsPage() {
   const [tab, setTab] = useState<(typeof TABS)[number]['value']>('pending')
   const [approveTarget, setApproveTarget] = useState<Application | null>(null)
   const [rejectTarget, setRejectTarget] = useState<Application | null>(null)
+  const client = useQueryClient()
 
   const appsQuery = useApplicationsQuery(tab)
   const groupsQuery = useGroupsQuery()
   useQueryErrorToast(appsQuery.error ?? groupsQuery.error)
   const groups = useMemo(() => groupsQuery.data?.groups ?? [], [groupsQuery.data])
+
+  const clearMutation = useMutation({
+    mutationFn: () => api<{ ok: boolean; deleted: number }>('/api/admin/applications/reviewed', { method: 'DELETE' }),
+    onSuccess: (res) => {
+      toast.success(`已清理 ${res.deleted} 条已处理申请`)
+      void client.invalidateQueries({ queryKey: ['applications'] })
+      void client.invalidateQueries({ queryKey: ['stats'] })
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : '清理失败'),
+  })
+
+  if (appsQuery.isError) return <QueryError message={appsQuery.error instanceof Error ? appsQuery.error.message : '申请加载失败'} onRetry={() => void appsQuery.refetch()} />
 
   if (appsQuery.isPending) {
     return (
@@ -53,7 +74,8 @@ export default function ApplicationsPage() {
             通过后自动入库，接口立即生效。
           </p>
         </div>
-        <div className="flex flex-wrap gap-1 rounded-lg border p-0.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-1 rounded-lg border p-0.5">
           {TABS.map((t) => (
             <Button
               key={t.value}
@@ -64,6 +86,22 @@ export default function ApplicationsPage() {
               {t.label}
             </Button>
           ))}
+          </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm" disabled={clearMutation.isPending}>清理已处理</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>清理已通过/已拒绝的申请？</AlertDialogTitle>
+                <AlertDialogDescription>删除审核历史，不影响友链数据。此操作不可撤销。</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction onClick={() => clearMutation.mutate()}>确认清理</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 

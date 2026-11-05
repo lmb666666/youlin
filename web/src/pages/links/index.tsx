@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ChevronDown, ChevronRight, Plus, ArrowUp, ArrowDown, FolderPen, Search, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { QueryError } from '@/components/query-error'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -21,7 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api, type Friend, type FriendListResponse, type Group, type GroupListResponse } from '@/lib/api'
 import { useFriendsQuery, useGroupsQuery } from '@/lib/queries'
-import { queryKeys } from '@/lib/query'
+import { invalidateLinkData, queryKeys } from '@/lib/query'
 import { useQueryErrorToast } from '@/lib/query-error'
 import { useSettings } from '@/lib/settings'
 import { FriendDialog } from './friend-dialog'
@@ -101,8 +102,7 @@ export default function LinksPage() {
       }),
     onSuccess: (_data, f) => {
       toast.success(f.status === 'hidden' ? '已恢复显示' : '已隐藏')
-      void client.invalidateQueries({ queryKey: queryKeys.friends })
-      void client.invalidateQueries({ queryKey: queryKeys.stats })
+      invalidateLinkData(client)
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : '操作失败'),
   })
@@ -115,9 +115,7 @@ export default function LinksPage() {
     onSuccess: (_data, target) => {
       toast.success(target.kind === 'friend' ? '友链已删除' : '分组及其友链已删除')
       setDeleteTarget(null)
-      void client.invalidateQueries({ queryKey: queryKeys.friends })
-      void client.invalidateQueries({ queryKey: queryKeys.groups })
-      void client.invalidateQueries({ queryKey: queryKeys.stats })
+      invalidateLinkData(client)
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : '删除失败'),
   })
@@ -170,6 +168,15 @@ export default function LinksPage() {
     if (to < 0 || to >= groups.length) return
     const next = arrayMove(groups, index, to)
     reorderGroupsMutation.mutate(next.map((g, i) => ({ id: g.id, sort: i })))
+  }
+
+  if (groupsQuery.isError || friendsQuery.isError) {
+    return (
+      <QueryError
+        message={groupsQuery.error instanceof Error ? groupsQuery.error.message : '数据加载失败'}
+        onRetry={() => { void groupsQuery.refetch(); void friendsQuery.refetch() }}
+      />
+    )
   }
 
   if (groupsQuery.isPending || friendsQuery.isPending) {

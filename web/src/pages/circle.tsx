@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Hammer, Newspaper, Play, RefreshCw, Rss, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { QueryError } from '@/components/query-error'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -81,6 +82,17 @@ export default function CirclePage() {
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : '删除失败'),
   })
+
+  if (healthQuery.isError || statusQuery.isError || articlesQuery.isError) {
+    return (
+      <QueryError
+        message={(healthQuery.error ?? statusQuery.error ?? articlesQuery.error) instanceof Error
+          ? (healthQuery.error ?? statusQuery.error ?? articlesQuery.error)!.message
+          : '朋友圈数据加载失败'}
+        onRetry={() => { void healthQuery.refetch(); void statusQuery.refetch(); void articlesQuery.refetch() }}
+      />
+    )
+  }
 
   if (healthQuery.isPending || statusQuery.isPending || articlesQuery.isPending) {
     return (

@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { api } from '@/lib/api'
-import { queryKeys } from '@/lib/query'
+import { invalidateLinkData } from '@/lib/query'
 import { Field } from './field'
 
 const groupFormSchema = groupCreateSchema.pick({ name: true, desc: true })
@@ -42,8 +42,7 @@ export function GroupDialog(props: {
     },
     onSuccess: () => {
       toast.success(editing ? '分组已更新' : '分组已创建')
-      void client.invalidateQueries({ queryKey: queryKeys.groups })
-      void client.invalidateQueries({ queryKey: queryKeys.friends })
+      invalidateLinkData(client)
       onOpenChange(false)
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : '保存失败'),
@@ -57,10 +56,10 @@ export function GroupDialog(props: {
         </DialogHeader>
         <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="grid gap-3">
           <Field label="名称 *" error={form.formState.errors.name?.message}>
-            <Input {...form.register('name')} placeholder="如：朋友们" />
+            <Input {...form.register('name')} maxLength={100} placeholder="如：朋友们" />
           </Field>
-          <Field label="说明">
-            <Input {...form.register('desc')} placeholder="展示在分组标题下（可选）" />
+          <Field label="说明" error={form.formState.errors.desc?.message}>
+            <Input {...form.register('desc')} maxLength={2000} placeholder="展示在分组标题下（可选）" />
           </Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>取消</Button>

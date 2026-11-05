@@ -49,7 +49,8 @@ export function RejectDialog(props: {
           <DialogDescription>原因仅自己可见。</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit((values) => mutation.mutate(values))} className="grid gap-3">
-          <Textarea {...form.register('reason')} rows={3} placeholder="如：缺少反链 / 内容不符合" />
+          <Textarea {...form.register('reason')} rows={3} maxLength={2000} placeholder="如：缺少反链 / 内容不符合" />
+          {form.formState.errors.reason && <p className="text-xs text-destructive">{form.formState.errors.reason.message}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
             <Button type="submit" variant="destructive" disabled={mutation.isPending}>确认拒绝</Button>

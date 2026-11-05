@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { api, type Application } from '@/lib/api'
-import { queryKeys } from '@/lib/query'
+import { invalidateLinkData } from '@/lib/query'
 
 interface ApproveResult {
   friendId: number
@@ -56,9 +56,7 @@ export function ApproveDialog(props: {
     onSuccess: (res) => {
       toast.success(`已通过并入库存为友链 #${res.friendId}${res.rebuild?.triggered ? '，已触发重建' : ''}`)
       void client.invalidateQueries({ queryKey: ['applications'] })
-      void client.invalidateQueries({ queryKey: queryKeys.friends })
-      void client.invalidateQueries({ queryKey: queryKeys.groups })
-      void client.invalidateQueries({ queryKey: queryKeys.stats })
+      invalidateLinkData(client)
       onOpenChange(false)
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : '通过失败'),
@@ -79,7 +77,7 @@ export function ApproveDialog(props: {
               name="groupId"
               render={({ field }) => (
                 <Select value={field.value === undefined ? '' : String(field.value)} onValueChange={(v) => field.onChange(Number(v))}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="选择分组" /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue placeholder={groups.length === 0 ? '未分组（自动创建）' : '选择分组'} /></SelectTrigger>
                   <SelectContent>
                     {groups.map((g) => (
                       <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
@@ -89,24 +87,27 @@ export function ApproveDialog(props: {
               )}
             />
           </div>
+          {groups.length === 0 && <p className="text-xs text-muted-foreground">通过时会自动创建「未分组」。</p>}
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label className="text-xs text-muted-foreground">作者</Label>
-              <Input {...form.register('author')} />
+              <Input {...form.register('author')} maxLength={200} />
+              {form.formState.errors.author && <p className="text-xs text-destructive">{form.formState.errors.author.message}</p>}
             </div>
             <div className="grid gap-1.5">
               <Label className="text-xs text-muted-foreground">站点标题</Label>
-              <Input {...form.register('title')} />
+              <Input {...form.register('title')} maxLength={200} />
+              {form.formState.errors.title && <p className="text-xs text-destructive">{form.formState.errors.title.message}</p>}
             </div>
           </div>
           <div className="grid gap-1.5">
             <Label className="text-xs text-muted-foreground">feed（留空则不参与朋友圈）</Label>
-            <Input {...form.register('feed')} placeholder="https://…/atom.xml" />
+            <Input {...form.register('feed')} maxLength={2048} placeholder="https://…/atom.xml" />
             {form.formState.errors.feed && <p className="text-xs text-destructive">{form.formState.errors.feed.message}</p>}
           </div>
           <div className="grid gap-1.5">
             <Label className="text-xs text-muted-foreground">简介</Label>
-            <Textarea {...form.register('desc')} rows={2} />
+            <Textarea {...form.register('desc')} rows={2} maxLength={2000} />
           </div>
           {rebuildEnabled && (
             <Controller
@@ -122,7 +123,7 @@ export function ApproveDialog(props: {
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-            <Button type="submit" disabled={mutation.isPending || form.watch('groupId') === undefined}>
+            <Button type="submit" disabled={mutation.isPending}>
               <Check /> {mutation.isPending ? '处理中…' : '通过并入库'}
             </Button>
           </DialogFooter>

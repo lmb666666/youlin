@@ -130,6 +130,17 @@ export default function SettingsPage() {
     e.target.value = ''
   }
 
+  if (schemaQuery.isError || settingsQuery.isError) {
+    return (
+      <div className="mx-auto grid w-full max-w-3xl gap-3 [&>*]:min-w-0">
+        <p className="text-sm text-destructive">设置加载失败，请检查服务状态后重试。</p>
+        <Button variant="outline" onClick={() => { void schemaQuery.refetch(); void settingsQuery.refetch() }}>
+          重试
+        </Button>
+      </div>
+    )
+  }
+
   if (!schema || settingsQuery.isPending) {
     return (
       <div className="mx-auto grid w-full max-w-3xl gap-4 [&>*]:min-w-0">
@@ -241,8 +252,11 @@ function JsonEditor({
         if (valid) onChange(JSON.parse(text) as unknown)
       }}
       onBlur={() => {
-        setRaw(null)
-        onInvalidChange?.(false)
+        // 非法 JSON 不要丢弃：保留原文并维持 invalid 状态，保存按钮会继续拦住
+        if (raw !== null && jsonParses(raw)) {
+          setRaw(null)
+          onInvalidChange?.(false)
+        }
       }}
     />
   )
