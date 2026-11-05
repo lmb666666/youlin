@@ -240,6 +240,17 @@ describe('接口三 POST /apply（提交）', () => {
     expect(other.status).toBe(201)
   })
 
+  it('并发提交同一链接只落一条 pending，失败请求归还限流名额', async () => {
+    await setSettings({ 'apply.rateLimitPerDay': 3 })
+    const body = { siteName: '并发站', link: 'https://race.example.com/' }
+    const results = await Promise.all([post(body, '10.8.8.20'), post(body, '10.8.8.20')])
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409])
+    const pending = await env.DB.prepare("SELECT COUNT(*) AS n FROM applications WHERE link = ? AND status = 'pending'").bind(body.link).first<{ n: number }>()
+    expect(pending?.n).toBe(1)
+    const used = await env.DB.prepare("SELECT count FROM apply_rate_limit WHERE ip = '10.8.8.20'").first<{ count: number }>()
+    expect(used?.count).toBe(1)
+  })
+
   it('Turnstile：开关关闭时无需 token；开启时缺 token 400 / 验证失败 403 / 通过 201', async () => {
     // 关闭（默认 setSettings）→ 直接 201 已由前例覆盖；这里验证开启后的三态
     await setSettings({ 'apply.turnstile': true })

@@ -2,7 +2,7 @@ import type { AppConfig, Env } from '../types'
 import { runtimeGet, runtimeSet } from '../crawler/http'
 import { logger } from '../log'
 import { collectBackup } from './collect'
-import { gzipBytes } from './codec'
+import { BACKUP_MAX_BYTES, gzipBytes } from './codec'
 import { backupFileName } from './format'
 import { recordBackupStatus, type BackupStatus } from './status'
 import { WebDavError, webdavClientFor, webdavReady } from './webdav'
@@ -51,6 +51,9 @@ export async function runWebdavBackup(
     const client = webdavClientFor(cfg, env.WEBDAV_PASSWORD)
     const envelope = await collectBackup(db, env, { includeArticles: opts.includeArticles })
     const gz = await gzipBytes(new TextEncoder().encode(JSON.stringify(envelope)))
+    if (gz.byteLength > BACKUP_MAX_BYTES) {
+      throw new Error(`备份超过 ${BACKUP_MAX_BYTES / 1024 / 1024} MB 上限，请关闭「包含文章」或清理申请后重试`)
+    }
     const name = opts.target === 'pre-restore' ? preRestoreName() : backupFileName()
     await client.ensureDir()
     await client.put(name, gz)

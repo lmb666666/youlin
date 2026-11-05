@@ -39,7 +39,7 @@
 - 每 5 分钟抓取 3 个站点，循环轮转；携带条件请求，内容未更新时直接跳过
 - 每个站点保留最新 5 篇文章，按发布时间排序、去重后聚合
 - 抓取状态页展示每个站点的成功、失败和下次检查时间，可以手动抓取单个站点或全部
-- 解析 RSS 2.0、Atom 和 RDF；缺少 published 时回退到 updated，解析失败的条目跳过
+- 解析 RSS 2.0、Atom、RDF 与 JSON Feed；缺少 published 时回退到 updated，解析失败的条目跳过
 
 ### 申请
 
@@ -141,7 +141,7 @@ cp .env.example .env      # 填 ADMIN_TOKEN（openssl rand -hex 32）
 docker compose up -d      # 拉取 ghcr.io/lmb666666/youlin:latest
 ```
 
-打开 `http://<服务器>:8787/admin` 登录即可。镜像同时提供 amd64 / arm64；升级用 `docker compose pull && docker compose up -d`。
+打开 `http://127.0.0.1:8787/admin` 登录即可（默认只绑定本机；远程访问请走反向代理，或修改 Compose 的端口映射并设置 `TRUST_PROXY=off`）。镜像同时提供 amd64 / arm64；升级用 `docker compose pull && docker compose up -d`。
 反向代理、HTTPS、备份与数据迁移见[部署指南](docs/deployment.md) 与[备份与恢复](docs/backup.md)。
 
 ### 本地开发
@@ -149,6 +149,7 @@ docker compose up -d      # 拉取 ghcr.io/lmb666666/youlin:latest
 ```bash
 pnpm install
 cp .env.example .env      # 本地口令，随便填
+pnpm build                # 生成管理台静态资源（首次/前端改动后）
 pnpm seed                 # 可选：应用迁移并写入示例数据
 pnpm dev                  # http://127.0.0.1:8787/admin
 ```

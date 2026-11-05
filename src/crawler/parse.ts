@@ -94,6 +94,18 @@ function absoluteLink(u: string | null, base: string | undefined): string | null
 
 /** 解析失败抛错（调用方决定记为不可抓取）；单条坏数据跳过不抛 */
 export async function parseFeed(xml: string, baseUrl?: string): Promise<ParsedFeed> {
+  const trimmed = xml.trim()
+  if (trimmed.startsWith('{')) {
+    let json: Record<string, unknown>
+    try {
+      json = JSON.parse(trimmed) as Record<string, unknown>
+    } catch {
+      throw new Error('json_parse_failed')
+    }
+    if (Array.isArray(json.items)) return normalizeJsonFeed(json, baseUrl)
+    throw new Error('unknown_feed_format')
+  }
+
   let doc: Record<string, unknown>
   try {
     doc = parser.parse(xml) as Record<string, unknown>
@@ -128,6 +140,29 @@ export async function parseFeed(xml: string, baseUrl?: string): Promise<ParsedFe
   }
 
   throw new Error('unknown_feed_format')
+}
+
+/** JSON Feed 1.x：items[].url/external_url、date_published、authors[].name */
+function normalizeJsonFeed(doc: Record<string, unknown>, baseUrl?: string): ParsedFeed {
+  const entries: ParsedEntry[] = []
+  for (const raw of doc.items as unknown[]) {
+    if (raw === null || typeof raw !== 'object') continue
+    const item = raw as Record<string, unknown>
+    const title = clampText(text(item.title), LIMITS.title)
+    const link = absoluteLink(text(item.url ?? item.external_url), baseUrl)
+    const publishedAt = toIso(item.date_published) ?? toIso(item.date_modified)
+    if (!title || !link || !publishedAt) continue
+    const authors = Array.isArray(item.authors) ? item.authors : []
+    const firstAuthor = authors[0] as Record<string, unknown> | undefined
+    entries.push({
+      guid: clampText(text(item.id), LIMITS.guid) ?? '',
+      title,
+      link,
+      author: clampText(firstAuthor ? text(firstAuthor.name) : null, LIMITS.author),
+      publishedAt,
+    })
+  }
+  return { title: text(doc.title), entries }
 }
 
 function toArray(v: unknown): Record<string, unknown>[] {

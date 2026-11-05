@@ -41,6 +41,9 @@ function assertWebdavReady(cfg: AppConfig, env: Env): void {
 export async function createBackupArchive(db: Db, env: Env, includeArticles: boolean): Promise<BackupArchive> {
   const envelope = await collectBackup(db, env, { includeArticles })
   const bytes = await gzipBytes(new TextEncoder().encode(JSON.stringify(envelope)))
+  if (bytes.byteLength > BACKUP_MAX_BYTES) {
+    throw new AppError(413, 'backup_too_large', `备份超过 ${BACKUP_MAX_BYTES / 1024 / 1024} MB 上限，可关闭「包含文章」或清理申请后重试`)
+  }
   const name = backupFileName()
   await runtimeSet(db, PREBACKUP_TICKET_KEY, new Date().toISOString())
   await recordBackupStatus(db, {
@@ -99,6 +102,8 @@ async function prepareRestore(db: Db, env: Env, cfg: AppConfig): Promise<string 
 async function restoreEnvelope(db: Db, env: Env, cfg: AppConfig, envelope: BackupEnvelope): Promise<RestoreResult> {
   const preRestoreFile = await prepareRestore(db, env, cfg)
   const summary = await applyRestore(db, envelope)
+  // 恢复后当前数据已换代：旧凭证必须失效，下一次恢复需重新下载当前数据
+  await runtimeSet(db, PREBACKUP_TICKET_KEY, null)
   invalidateConfigCache()
   return { summary, preRestoreFile }
 }

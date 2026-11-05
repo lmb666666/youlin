@@ -108,7 +108,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     fields: [
       { key: 'apply.enabled', type: 'boolean', default: true, label: '申请通道', description: '关闭后申请页显示停用。' },
       { key: 'apply.rateLimitPerDay', type: 'number', default: 3, min: 1, max: 100, label: '每 IP 每天上限', description: '按天限流，超出返回 429。' },
-      { key: 'apply.turnstile', type: 'boolean', default: true, label: '人机验证', description: '关闭后提交不再验证人机。' },
+      { key: 'apply.turnstile', type: 'boolean', default: false, label: '人机验证', description: '开启后需配置 Site Key 与 TURNSTILE_SECRET。' },
       { key: 'apply.turnstileSiteKey', type: 'string', default: '', label: 'Turnstile Site Key', description: '公开值，密钥放 TURNSTILE_SECRET。' },
       { key: 'apply.backlinkPolicy', type: 'enum', options: ['mark', 'reject', 'off'], default: 'mark', label: '反链策略', description: 'mark 仅标记 / reject 未检测到反链即拒绝 / off 不检测。' },
       { key: 'apply.autoApprove', type: 'boolean', default: false, label: '自动通过', description: '提交即入库（不推荐，垃圾提交无人工拦截）。' },

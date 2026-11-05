@@ -3,9 +3,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Database from 'better-sqlite3'
 import { applyMigrations } from '../src/server/migrations'
+import { loadDotEnv } from '../src/server/env'
 
 /** 本地示例数据：应用迁移后执行幂等的 scripts/seed.sql */
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+loadDotEnv(path.join(root, '.env'))
 const dbPath = process.env.DB_PATH ?? 'data/youlin.db'
 
 fs.mkdirSync(path.dirname(path.resolve(dbPath)), { recursive: true })

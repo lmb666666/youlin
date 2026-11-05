@@ -124,4 +124,14 @@ describe('配置加载三层合并', () => {
     expect(cfg.api.corsOrigin).toBe('*')
     expect(cfg.security.sessionDays).toBe(30)
   })
+
+  it('计数配置必须为整数；退避阶梯非负且升序；WebDAV URL 禁止内嵌凭据', () => {
+    expect(fieldSchemas['crawl.batchSize']!.safeParse(3.5).success).toBe(false)
+    expect(fieldSchemas['crawl.batchSize']!.safeParse(3).success).toBe(true)
+    expect(fieldSchemas['linkCheck.backoffLadder']!.safeParse([[0, 0]]).success).toBe(false)
+    expect(fieldSchemas['linkCheck.backoffLadder']!.safeParse([[30, 240], [10, 120]]).success).toBe(false)
+    expect(fieldSchemas['linkCheck.backoffLadder']!.safeParse([[10, 120], [30, 240]]).success).toBe(true)
+    expect(fieldSchemas['backup.webdavUrl']!.safeParse('https://u:p@dav.example.com/').success).toBe(false)
+    expect(fieldSchemas['backup.webdavUrl']!.safeParse('https://dav.example.com/').success).toBe(true)
+  })
 })

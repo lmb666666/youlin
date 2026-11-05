@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser'
+import { BACKUP_MAX_BYTES } from './codec'
 
 /**
  * 极简 WebDAV 客户端（fetch 实现，Node 运行时）
@@ -38,6 +39,7 @@ const PRE_RESTORE_PREFIX = 'pre-restore-'
 export const BACKUP_FILE_PATTERN = /^(?:youlin-backup-|pre-restore-)[\w-]+\.json\.gz$/
 /** pre-restore-* 在云端的最长保留期：只服务失败回滚，不无限累积 */
 const PRE_RESTORE_TTL_MS = 30 * 86_400_000
+const MAX_XML_BYTES = 4 * 1024 * 1024
 
 /** 路径按段编码，保留 url 自带的路径 */
 export function joinDavUrl(base: string, ...segments: string[]): string {
@@ -57,6 +59,42 @@ function basicToken(user: string, pass: string): string {
   let bin = ''
   for (const b of bytes) bin += String.fromCharCode(b)
   return btoa(bin)
+}
+
+async function readBytesLimited(res: Response, maxBytes: number, what: string): Promise<Uint8Array> {
+  const declared = Number(res.headers.get('content-length') ?? '')
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new WebDavError(`${what}超过 ${maxBytes / 1024 / 1024} MB 上限`)
+  }
+  if (!res.body) {
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    if (bytes.byteLength > maxBytes) throw new WebDavError(`${what}超过 ${maxBytes / 1024 / 1024} MB 上限`)
+    return bytes
+  }
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {})
+        throw new WebDavError(`${what}超过 ${maxBytes / 1024 / 1024} MB 上限`)
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  const out = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return out
 }
 
 function toArray<T>(v: T | T[] | undefined): T[] {
@@ -163,7 +201,7 @@ export class WebDavClient {
     if (res.status !== 207 && res.status !== 200) {
       throw new WebDavError(`列目录失败（${res.status}）`, res.status)
     }
-    const xml = await res.text()
+    const xml = new TextDecoder().decode(await readBytesLimited(res, MAX_XML_BYTES, 'WebDAV 目录列表'))
     const parser = new XMLParser({ ignoreAttributes: false, removeNSPrefix: true, parseTagValue: false })
     const doc = parser.parse(xml) as {
       multistatus?: { response?: Record<string, unknown> | Record<string, unknown>[] }
@@ -201,14 +239,20 @@ export class WebDavClient {
     if (!BACKUP_FILE_PATTERN.test(name)) throw new WebDavError('文件名不合法')
     const res = await this.request('GET', joinDavUrl(this.base, name))
     if (res.status !== 200) throw new WebDavError(`下载备份失败（${res.status}）`, res.status)
-    return new Uint8Array(await res.arrayBuffer())
+    return readBytesLimited(res, BACKUP_MAX_BYTES, 'WebDAV 备份文件')
   }
 
   async remove(name: string): Promise<void> {
     if (!BACKUP_FILE_PATTERN.test(name)) throw new WebDavError('文件名不合法')
-    const res = await this.request('DELETE', joinDavUrl(this.base, name))
-    if (![200, 204, 404].includes(res.status)) {
-      throw new WebDavError(`删除旧备份失败（${res.status}）`, res.status)
+    try {
+      const res = await this.request('DELETE', joinDavUrl(this.base, name))
+      if (![200, 204, 404].includes(res.status)) {
+        throw new WebDavError(`删除旧备份失败（${res.status}）`, res.status)
+      }
+    } catch (err) {
+      // 文件在 PROPFIND 与 DELETE 之间被删除：保留策略继续处理其余文件
+      if (err instanceof WebDavError && err.status === 404) return
+      throw err
     }
   }
 

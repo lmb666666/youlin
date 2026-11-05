@@ -47,7 +47,7 @@ export const friendCreateSchema = z.object({
   comment: z.string().max(2000).optional().nullable(),
   inCircle: z.boolean().optional(),
   status: z.enum(['active', 'hidden']).optional(),
-  sort: z.number().int().optional(),
+  sort: z.number().int().min(0).optional(),
 })
 
 export const friendPatchSchema = friendCreateSchema.partial().extend({
@@ -59,7 +59,7 @@ export const friendPatchSchema = friendCreateSchema.partial().extend({
 })
 
 export const friendReorderSchema = z.object({
-  items: z.array(z.object({ id: z.number().int(), sort: z.number().int(), groupId: z.number().int().optional() })).min(1),
+  items: z.array(z.object({ id: z.number().int(), sort: z.number().int().min(0), groupId: z.number().int().optional() })).min(1),
 })
 
 export const friendListResponseSchema = z.object({ friends: z.array(friendSchema) })

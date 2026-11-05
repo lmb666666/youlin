@@ -253,6 +253,15 @@ describe('备份恢复', () => {
     }
   })
 
+  it('成功恢复后旧恢复凭证失效，必须重新下载备份', async () => {
+    await seed()
+    const { gz } = await exportBackup()
+    expect((await postBackup('/api/admin/backup/restore?confirm=1', gz)).status).toBe(200)
+    const second = await postBackup('/api/admin/backup/restore?confirm=1', gz)
+    expect(second.status).toBe(400)
+    expect(((await second.json()) as { error: { code: string } }).error.code).toBe('prebackup_required')
+  })
+
   it('备份内容为 null → 400，而不是 500', async () => {
     const res = await postBackup('/api/admin/backup/preview', 'null')
     expect(res.status).toBe(400)
@@ -291,6 +300,23 @@ describe('备份恢复', () => {
     expect(res.status).toBe(200)
     const list = await (await authed('/api/admin/friends')).json() as { friends: { link: string }[] }
     expect(list.friends.map((f) => f.link).sort()).toEqual(['https://a.example.com/', 'https://b.example.com/'])
+  })
+})
+
+describe('导入边界', () => {
+  it('超长字段被跳过，不会产生无法恢复的备份', async () => {
+    const res = await authed('/api/admin/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ friends: [{ url: 'https://long.example.com/', title: 'x'.repeat(300) }] }),
+    })
+    expect(res.status).toBe(200)
+    const result = (await res.json()) as { imported: number; skipped: number }
+    expect(result).toMatchObject({ imported: 0, skipped: 1 })
+
+    const { gz } = await exportBackup()
+    const preview = await postBackup('/api/admin/backup/preview', gz)
+    expect(preview.status).toBe(200)
   })
 })
 

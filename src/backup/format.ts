@@ -89,13 +89,13 @@ const backupSourceState = z.object({
 })
 
 export const backupData = z.object({
-  groups: z.array(backupGroup).max(5000),
-  friends: z.array(backupFriend).max(20000),
-  applications: z.array(backupApplication).max(20000),
+  groups: z.array(backupGroup),
+  friends: z.array(backupFriend),
+  applications: z.array(backupApplication),
   /** 扁平 camelCase 配置键；不含 internal.* 运行时簿记 */
   settings: z.record(z.string(), z.unknown()),
-  articles: z.array(backupArticle).max(200000).optional(),
-  sourceState: z.array(backupSourceState).max(20000).optional(),
+  articles: z.array(backupArticle).optional(),
+  sourceState: z.array(backupSourceState).optional(),
 })
 
 export const backupEnvelope = z.object({

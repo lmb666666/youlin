@@ -45,8 +45,9 @@ function stubFetch(handler: (url: string, headers: Record<string, string>) => Re
 beforeEach(() => {
   fetchCalls = []
 })
-afterEach(() => {
+afterEach(async () => {
   vi.unstubAllGlobals()
+  await env.DB.prepare("DELETE FROM settings WHERE key = 'linkCheck.enabled'").run()
 })
 
 const base = 'https://t.example.com/'
@@ -122,6 +123,46 @@ describe('RSS 抓取', () => {
     const state = await env.DB.prepare('SELECT reachable, crawlable, unreachable_since IS NOT NULL AS has_since, fail_count, last_error FROM source_state WHERE friend_id = ?').bind(fid).first<{ reachable: number; crawlable: number; has_since: number; fail_count: number; last_error: string }>()
     expect(state).toMatchObject({ reachable: 0, crawlable: 0, has_since: 1, fail_count: 1 })
     expect(state!.last_error).toContain('dns fail')
+  })
+
+  it('304 → 刷新 staleDays 并清除旧错误', async () => {
+    const { id: fid, base, feedUrl } = await seedFriend('feed')
+    const old = new Date(Date.now() - 30 * 86_400_000).toISOString().replace(/\.\d+Z$/, 'Z')
+    await env.DB.prepare(
+      `INSERT INTO source_state (friend_id, etag, reachable, crawlable, last_post_published, last_post_days_ago, last_error, fail_count)
+       VALUES (?, ?, 1, 1, ?, 0, '旧错误', 2)
+       ON CONFLICT(friend_id) DO UPDATE SET
+         etag = excluded.etag, reachable = excluded.reachable, crawlable = excluded.crawlable,
+         last_post_published = excluded.last_post_published, last_post_days_ago = excluded.last_post_days_ago,
+         last_error = excluded.last_error, fail_count = excluded.fail_count`,
+    ).bind(fid, '"v1"', old).run()
+    stubFetch(() => new Response(null, { status: 304 }))
+    const { cfg } = await loadConfig(env.DB, env)
+    expect(await crawlSource(env.DB, env, cfg, { id: fid, author: 'T', link: base, feed: feedUrl, in_circle: 1 })).toBe('notModified')
+
+    const state = await env.DB.prepare('SELECT last_post_days_ago, last_error, fail_count FROM source_state WHERE friend_id = ?')
+      .bind(fid)
+      .first<{ last_post_days_ago: number; last_error: string | null; fail_count: number }>()
+    expect(state?.last_post_days_ago).toBe(30)
+    expect(state?.last_error).toBeNull()
+    expect(state?.fail_count).toBe(0)
+  })
+
+  it('linkCheck 关闭时无 feed 源不会永久占用队首', async () => {
+    const noFeed = [await seedFriend(null), await seedFriend(null), await seedFriend(null)]
+    const withFeed = await seedFriend('feed')
+    await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('linkCheck.enabled', 'false') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run()
+    stubFetch((url) => {
+      if (url === withFeed.feedUrl) return okResponse(rssXml([{ title: 'A', link: withFeed.base + 'a', pubDate: D(1), guid: 'a' }]))
+      return new Response('<html></html>', { status: 200, headers: { 'Content-Type': 'text/html' } })
+    })
+    const { cfg } = await loadConfig(env.DB, env)
+
+    const first = await runCronTick(env.DB, env, cfg)
+    expect(first).toMatchObject({ total: 3, skipped: 3 })
+    const second = await runCronTick(env.DB, env, cfg)
+    expect(second).toMatchObject({ total: 1, ok: 1 }) // 三个无 feed 源已推进 next_check，轮到有 feed 的源
+    expect(noFeed).toHaveLength(3)
   })
 
   it('feed 404 + 首页正常 → 可达但 RSS 不可用（不误报整站失联）', async () => {

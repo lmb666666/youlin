@@ -69,6 +69,19 @@ describe('申请队列（管理端）', () => {
     expect(bad.status).toBe(400)
   })
 
+  it('清理已处理申请，不影响待审队列', async () => {
+    const a = await seedApplication({ siteName: '待拒绝' })
+    await authed(`/api/admin/applications/${a}/reject`, { method: 'POST', body: JSON.stringify({}) })
+    await seedApplication({ siteName: '仍待审' })
+
+    const res = await authed('/api/admin/applications/reviewed', { method: 'DELETE' })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { deleted: number }).deleted).toBe(1)
+    const pending = await authed('/api/admin/applications?status=pending')
+    const body = (await pending.json()) as { applications: { siteName: string }[] }
+    expect(body.applications.map((x) => x.siteName)).toEqual(['仍待审'])
+  })
+
   it('通过：建友链（可选分组/字段覆盖）→ 申请 approved、接口一可见', async () => {
     const id = await seedApplication({ siteName: '好站点', author: '好人', desc: '简介', feed: 'https://good.example.com/feed.xml' })
     const g = await authed('/api/admin/groups', { method: 'POST', body: JSON.stringify({ name: '新朋友' }) })

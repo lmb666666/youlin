@@ -114,18 +114,17 @@ export function rejectApplication(db: Db, id: number, reason: string | null, now
     .run()
 }
 
-export function getApplyRateCount(db: Db, ip: string, day: string): number {
-  const row = getOrm(db)
-    .select({ count: applyRateLimit.count })
-    .from(applyRateLimit)
-    .where(and(eq(applyRateLimit.ip, ip), eq(applyRateLimit.day, day)))
-    .get()
-  return row?.count ?? 0
-}
-
-/** 成功提交后计数，并清理过期日期行 */
-export function recordApplySuccess(db: Db, ip: string, day: string): void {
-  getOrm(db).transaction((tx) => {
+/** 原子预占一次申请名额；超限返回 false */
+export function reserveApplyAttempt(db: Db, ip: string, day: string, limit: number): boolean {
+  return getOrm(db).transaction((tx) => {
+    tx.delete(applyRateLimit).where(lt(applyRateLimit.day, day)).run()
+    const used = Number(
+      tx.select({ count: applyRateLimit.count })
+        .from(applyRateLimit)
+        .where(and(eq(applyRateLimit.ip, ip), eq(applyRateLimit.day, day)))
+        .get()?.count ?? 0,
+    )
+    if (used >= limit) return false
     tx.insert(applyRateLimit)
       .values({ ip, day, count: 1 })
       .onConflictDoUpdate({
@@ -133,6 +132,26 @@ export function recordApplySuccess(db: Db, ip: string, day: string): void {
         set: { count: sql`${applyRateLimit.count} + 1` },
       })
       .run()
-    tx.delete(applyRateLimit).where(lt(applyRateLimit.day, day)).run()
+    return true
   })
+}
+
+/** 提交失败时归还预占名额，保持“成功才计数”的语义 */
+export function releaseApplyAttempt(db: Db, ip: string, day: string): void {
+  getOrm(db).transaction((tx) => {
+    tx.update(applyRateLimit)
+      .set({ count: sql`${applyRateLimit.count} - 1` })
+      .where(and(eq(applyRateLimit.ip, ip), eq(applyRateLimit.day, day)))
+      .run()
+    tx.delete(applyRateLimit).where(and(eq(applyRateLimit.ip, ip), eq(applyRateLimit.day, day), lt(applyRateLimit.count, 1))).run()
+  })
+}
+
+/** 清理已处理申请，控制长期数据量 */
+export function deleteReviewedApplications(db: Db): number {
+  return getOrm(db)
+    .delete(applications)
+    .where(inArray(applications.status, ['approved', 'rejected']))
+    .returning({ id: applications.id })
+    .all().length
 }

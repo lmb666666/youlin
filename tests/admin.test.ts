@@ -432,6 +432,35 @@ describe('导入', () => {
     expect(link?.avatar).toBeUndefined()
   })
 
+  it('排序校验：不存在的分组/友链返回明确错误', async () => {
+    const g = await authed('/api/admin/groups', { method: 'POST', body: JSON.stringify({ name: '排序组' }) })
+    const gid = ((await g.json()) as { id: number }).id
+    const f = await authed('/api/admin/friends', {
+      method: 'POST',
+      body: JSON.stringify({ groupId: gid, title: '排序友链', link: 'https://order.example.com/', since: '2026-01-01' }),
+    })
+    const fid = ((await f.json()) as { id: number }).id
+
+    const badGroup = await authed('/api/admin/friends/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ items: [{ id: fid, sort: 0, groupId: 999999 }] }),
+    })
+    expect(badGroup.status).toBe(400)
+    expect(((await badGroup.json()) as { error: { code: string } }).error.code).toBe('unknown_group')
+
+    const missingFriend = await authed('/api/admin/friends/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ items: [{ id: 999999, sort: 0 }] }),
+    })
+    expect(missingFriend.status).toBe(404)
+
+    const missingGroup = await authed('/api/admin/groups/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ items: [{ id: 999999, sort: 0 }] }),
+    })
+    expect(missingGroup.status).toBe(404)
+  })
+
   it('101 个新分组导入正常分片', async () => {
     const prefix = `Bulk${Math.random().toString(36).slice(2, 8)}`
     const groups = Array.from({ length: 101 }, (_, i) => ({

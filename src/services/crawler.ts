@@ -1,6 +1,10 @@
+import { randomUUID } from 'node:crypto'
 import { AppError } from '../errors'
 import { isoUtc } from '../util/time'
 import { runDetached } from '../util/bg'
+import { logger } from '../log'
+import { acquireLock, releaseLock, renewLock } from '../repositories/locks'
+import { SCHEDULER_LOCK_KEY, SCHEDULER_LOCK_RENEW_MS, SCHEDULER_LOCK_TTL_MS } from '../server/scheduler-lock'
 import { readRoundState, roundStatus, runHealthRound, runManualRound } from '../crawler/crawl'
 import { extractDeclaredFeeds, commonFeedPaths } from '../crawler/discover'
 import { fetchRemote } from '../crawler/http'
@@ -84,6 +88,29 @@ export async function crawlStatus(db: Db): Promise<CrawlStatus> {
   }
 }
 
+async function launchRound(db: Db, task: () => Promise<void>): Promise<void> {
+  const owner = randomUUID()
+  if (!(await acquireLock(db, SCHEDULER_LOCK_KEY, owner, SCHEDULER_LOCK_TTL_MS))) {
+    throw new AppError(409, 'round_running', '已有抓取/体检任务进行中，请等待完成')
+  }
+  const heartbeat = setInterval(() => {
+    void renewLock(db, SCHEDULER_LOCK_KEY, owner, SCHEDULER_LOCK_TTL_MS)
+      .then((ok) => {
+        if (!ok) logger.warn({ owner }, 'manual round lock lost')
+      })
+      .catch((err) => logger.warn({ err }, 'manual round lock renew failed'))
+  }, SCHEDULER_LOCK_RENEW_MS)
+
+  runDetached(
+    task().finally(async () => {
+      clearInterval(heartbeat)
+      await releaseLock(db, SCHEDULER_LOCK_KEY, owner).catch((err) => {
+        logger.warn({ err }, 'manual round lock release failed')
+      })
+    }),
+  )
+}
+
 async function ensureNoRound(db: Db): Promise<void> {
   const round = await readRoundState(db)
   if (roundStatus(round).running) {
@@ -96,7 +123,7 @@ export async function startHealthRound(db: Db, env: Env, cfg: AppConfig): Promis
   await ensureNoRound(db)
   if (!cfg.linkCheck.enabled) throw new AppError(400, 'health_disabled', '体检总开关已关闭（linkCheck.enabled）')
   const n = countActiveFriends(db)
-  if (n > 0) runDetached(runHealthRound(db, env, cfg))
+  if (n > 0) await launchRound(db, () => runHealthRound(db, env, cfg))
   return n
 }
 
@@ -107,7 +134,7 @@ export async function startCrawlRound(db: Db, env: Env, cfg: AppConfig): Promise
     throw new AppError(400, 'crawl_disabled', '抓取与体检总开关均已关闭')
   }
   const n = countActiveFriends(db)
-  if (n > 0) runDetached(runManualRound(db, env, cfg))
+  if (n > 0) await launchRound(db, () => runManualRound(db, env, cfg))
   return n
 }
 

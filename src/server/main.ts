@@ -11,6 +11,7 @@ import { SqliteDb } from './db'
 import { createEnv, loadDotEnv } from './env'
 import { applyMigrations } from './migrations'
 import { acquireLock, releaseLock, renewLock } from '../repositories/locks'
+import { SCHEDULER_LOCK_KEY, SCHEDULER_LOCK_RENEW_MS, SCHEDULER_LOCK_TTL_MS } from './scheduler-lock'
 import { logger, resolveLogLevel } from '../log'
 import type { Env } from '../types'
 
@@ -18,7 +19,7 @@ import type { Env } from '../types'
  * Node 运行时入口：HTTP 服务 + 静态资源 + 定时作业。
  *
  * 环境变量：PORT / HOST / DB_PATH / WEB_ROOT / MIGRATIONS_DIR /
- *           CRON_ENABLED / CRON_INTERVAL_SECONDS / LOG_LEVEL / ADMIN_TOKEN（必填）/
+ *           CRON_ENABLED / CRON_INTERVAL_SECONDS / LOG_LEVEL / TRUST_PROXY / ADMIN_TOKEN（必填）/
  *           TURNSTILE_SECRET / GITHUB_PAT / WEBDAV_PASSWORD / YOULIN_CONFIG_OVERRIDES
  */
 
@@ -60,11 +61,6 @@ const server = serve(
     logger.info({ url: `http://${HOST}:${info.port}`, webRoot: path.resolve(WEB_ROOT) }, 'youlin listening')
   },
 )
-
-const SCHEDULER_LOCK_KEY = 'internal.schedulerLock'
-/** 锁 TTL 与续租间隔：进程崩溃后最多阻塞 TTL；长任务靠心跳续租 */
-const SCHEDULER_LOCK_TTL_MS = 10 * 60_000
-const SCHEDULER_LOCK_RENEW_MS = 2 * 60_000
 
 let running = false
 let schedulerLockOwner: string | null = null
@@ -110,10 +106,18 @@ async function tick(): Promise<void> {
   }
 }
 
+let tickPromise: Promise<void> | null = null
+function runTick(): void {
+  if (tickPromise || shuttingDown) return
+  tickPromise = tick().finally(() => {
+    tickPromise = null
+  })
+}
+
 if (CRON_ENABLED) {
   // 首次稍作延迟，避免与启动时的迁移/连接争抢
-  setTimeout(() => void tick(), 5_000).unref()
-  setInterval(() => void tick(), CRON_INTERVAL_SECONDS * 1000).unref()
+  setTimeout(runTick, 5_000).unref()
+  setInterval(runTick, CRON_INTERVAL_SECONDS * 1000).unref()
   logger.info({ intervalSeconds: CRON_INTERVAL_SECONDS }, 'scheduler enabled')
 } else {
   logger.info('scheduler disabled (CRON_ENABLED=false)')
@@ -129,6 +133,10 @@ async function shutdown(sig: string): Promise<void> {
   if (shuttingDown) return
   shuttingDown = true
   logger.info({ signal: sig }, 'shutting down')
+  // 给进行中的 tick 一点收尾时间；超时则按进程退出来保证部署不长时间卡住
+  if (tickPromise) {
+    await Promise.race([tickPromise, new Promise((resolve) => setTimeout(resolve, 4_000))])
+  }
   // 部署重启时尽快释放调度锁，避免新实例空等 TTL
   if (schedulerLockOwner) {
     const owner = schedulerLockOwner

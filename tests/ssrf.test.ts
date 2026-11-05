@@ -23,6 +23,9 @@ describe('isPrivateTarget：内网/环回/非法协议拒绝', () => {
     'http://[::ffff:127.0.0.1]/',
     'http://app.local/',
     'http://svc.internal/',
+    'http://localhost./',
+    'http://redis/',
+    'http://metadata/',
     'ftp://example.com/',
     'file:///etc/passwd',
     'not a url',
@@ -72,9 +75,11 @@ describe('clientIp：来源判定', () => {
     expect(clientIp(fakeCtx({ 'cf-connecting-ip': '1.2.3.4' }))).toBe('local')
   })
 
-  it('Node 带本地反代：socket 为回环/私网时取 XFF 最后一档（由可信代理追加）', () => {
-    const loopback = { incoming: { socket: { remoteAddress: '127.0.0.1' } } }
-    const lan = { incoming: { socket: { remoteAddress: '192.168.1.5' } } }
+  it('显式信任反代时才取 XFF 最后一档', () => {
+    const untrusted = { incoming: { socket: { remoteAddress: '192.168.1.5' } } }
+    expect(clientIp(fakeCtx({ 'x-forwarded-for': '198.51.100.2' }, untrusted))).toBe('192.168.1.5')
+    const loopback = { incoming: { socket: { remoteAddress: '127.0.0.1' } }, TRUST_PROXY: 'loopback' }
+    const lan = { incoming: { socket: { remoteAddress: '192.168.1.5' } }, TRUST_PROXY: 'private' }
     expect(clientIp(fakeCtx({ 'x-forwarded-for': '198.51.100.2, 203.0.113.10' }, loopback))).toBe('203.0.113.10')
     expect(clientIp(fakeCtx({}, loopback))).toBe('127.0.0.1')
     expect(clientIp(fakeCtx({ 'x-forwarded-for': '198.51.100.2' }, lan))).toBe('198.51.100.2')

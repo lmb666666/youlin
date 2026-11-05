@@ -37,6 +37,8 @@ export interface Env {
   WEBDAV_PASSWORD?: string
   /** 覆盖级配置：JSON 文本，扁平 camelCase 点号键（DESIGN §9） */
   YOULIN_CONFIG_OVERRIDES?: string
+  /** 反向代理信任级别：off 不信任 XFF；loopback 仅信任回环 peer；private 信任私网 peer（Docker/内网反代） */
+  TRUST_PROXY?: 'off' | 'loopback' | 'private'
 }
 
 /** 应用级配置（嵌套视图，由扁平 settings 合并而来） */

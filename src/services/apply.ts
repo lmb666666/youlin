@@ -11,9 +11,9 @@ import {
   createAutoApprovedApplication,
   findFriendIdByLinks,
   findPendingApplicationIdByLinks,
-  getApplyRateCount,
   insertApplication,
-  recordApplySuccess,
+  releaseApplyAttempt,
+  reserveApplyAttempt,
   type ApplicationInsert,
   type FriendInsert,
 } from '../repositories/applications'
@@ -102,103 +102,110 @@ export async function submitApplication(
 
   const day = new Date().toISOString().slice(0, 10)
 
-  // 限流：每 IP 每天成功提交次数（先查后计，计数在成功提交时 +1）
-  if (getApplyRateCount(db, ip, day) >= cfg.apply.rateLimitPerDay) {
+  // 先原子预占名额，避免并发请求都读到旧计数；失败路径再归还
+  if (!reserveApplyAttempt(db, ip, day, cfg.apply.rateLimitPerDay)) {
     throw new AppError(429, 'rate_limited', `每 IP 每天最多提交 ${cfg.apply.rateLimitPerDay} 次，请明天再试`)
   }
 
-  const link = input.link!.trim()
+  try {
+    const link = input.link!.trim()
 
-  // 去重：已在友链表 / 已有待审申请
-  const variants = linkVariants(link)
-  if (findFriendIdByLinks(db, variants) !== null) {
-    throw new AppError(409, 'duplicate_link', '该链接已在友链中')
-  }
-  if (findPendingApplicationIdByLinks(db, variants) !== null) {
-    throw new AppError(409, 'already_pending', '该链接已有待审申请')
-  }
-
-  // 人机验证（apply.turnstile；密钥在部署级 Secret）
-  if (cfg.apply.turnstile) {
-    const token = nonEmpty(input.turnstileToken) ? input.turnstileToken!.trim() : ''
-    if (!token) throw new AppError(400, 'validation_failed', '字段校验失败', { turnstileToken: '请完成人机验证' })
-    if (!env.TURNSTILE_SECRET) {
-      throw new AppError(403, 'turnstile_unconfigured', '服务端未配置人机验证密钥，暂无法提交')
+    // 去重：已在友链表 / 已有待审申请
+    const variants = linkVariants(link)
+    if (findFriendIdByLinks(db, variants) !== null) {
+      throw new AppError(409, 'duplicate_link', '该链接已在友链中')
     }
-    if (!(await verifyTurnstile(env, env.TURNSTILE_SECRET, token, ip))) {
-      throw new AppError(403, 'turnstile_failed', '人机验证未通过，请重试')
+    if (findPendingApplicationIdByLinks(db, variants) !== null) {
+      throw new AppError(409, 'already_pending', '该链接已有待审申请')
     }
-  }
 
-  // 反链检测（apply.backlinkPolicy / backlink.enabled）
-  let backlink: BacklinkVerdict = { ok: null, detail: null }
-  if (cfg.apply.backlinkPolicy !== 'off' && cfg.backlink.enabled) {
-    backlink = await checkApplicantBacklink(env, cfg, link)
-  }
-  if (cfg.apply.backlinkPolicy === 'reject' && backlink.ok !== true) {
-    throw new AppError(403, 'backlink_missing', '未检测到指向本站的链接，请先添加友链', {
-      backlink: backlink.detail ?? '未检测',
-    })
-  }
+    // 人机验证（apply.turnstile；密钥在部署级 Secret）
+    if (cfg.apply.turnstile) {
+      const token = nonEmpty(input.turnstileToken) ? input.turnstileToken!.trim() : ''
+      if (!token) throw new AppError(400, 'validation_failed', '字段校验失败', { turnstileToken: '请完成人机验证' })
+      if (!env.TURNSTILE_SECRET) {
+        throw new AppError(403, 'turnstile_unconfigured', '服务端未配置人机验证密钥，暂无法提交')
+      }
+      if (!(await verifyTurnstile(env, env.TURNSTILE_SECRET, token, ip))) {
+        throw new AppError(403, 'turnstile_failed', '人机验证未通过，请重试')
+      }
+    }
 
-  // 落库（autoApprove 直接入库并建友链）
-  const siteName = nonEmpty(input.siteName) ? input.siteName!.trim() : new URL(link).hostname
-  const author = nonEmpty(input.author) ? input.author!.trim() : null
-  const avatar = nonEmpty(input.avatar) ? input.avatar!.trim() : null
-  const feed = nonEmpty(input.feed) ? input.feed!.trim() : null
-  const desc = nonEmpty(input.desc) ? input.desc!.trim() : null
-  const contact = nonEmpty(input.contact) ? input.contact!.trim() : null
-  const note = nonEmpty(input.note) ? input.note!.trim() : null
-  const backlinkOk = backlink.ok === null ? null : backlink.ok ? 1 : 0
-  const nowDb = dbTime(new Date().toISOString())
-  const application: ApplicationInsert = {
-    siteName,
-    author,
-    link,
-    avatar,
-    feed,
-    desc,
-    contact,
-    note,
-    backlinkOk,
-    backlinkCheckedAt: backlink.detail === null ? null : nowDb,
-    backlinkDetail: backlink.detail,
-    status: cfg.apply.autoApprove ? 'approved' : 'pending',
-    reviewNote: null,
-    reviewedAt: null,
-  }
+    // 反链检测（apply.backlinkPolicy / backlink.enabled）
+    let backlink: BacklinkVerdict = { ok: null, detail: null }
+    if (cfg.apply.backlinkPolicy !== 'off' && cfg.backlink.enabled) {
+      backlink = await checkApplicantBacklink(env, cfg, link)
+    }
+    if (cfg.apply.backlinkPolicy === 'reject' && backlink.ok !== true) {
+      throw new AppError(403, 'backlink_missing', '未检测到指向本站的链接，请先添加友链', {
+        backlink: backlink.detail ?? '未检测',
+      })
+    }
 
-  let status: ApplyResult['status'] = 'pending'
-  let applicationId: number
-
-  if (cfg.apply.autoApprove) {
-    const groupId = ensureGroupByName(db, '未分组')
-    const friend: Omit<FriendInsert, 'groupId'> = {
-      author: author ?? siteName,
-      title: siteName,
-      desc,
+    // 落库（autoApprove 直接入库并建友链）
+    const siteName = nonEmpty(input.siteName) ? input.siteName!.trim() : new URL(link).hostname.slice(0, 200)
+    const author = nonEmpty(input.author) ? input.author!.trim() : null
+    const avatar = nonEmpty(input.avatar) ? input.avatar!.trim() : null
+    const feed = nonEmpty(input.feed) ? input.feed!.trim() : null
+    const desc = nonEmpty(input.desc) ? input.desc!.trim() : null
+    const contact = nonEmpty(input.contact) ? input.contact!.trim() : null
+    const note = nonEmpty(input.note) ? input.note!.trim() : null
+    const backlinkOk = backlink.ok === null ? null : backlink.ok ? 1 : 0
+    const nowDb = dbTime(new Date().toISOString())
+    const application: ApplicationInsert = {
+      siteName,
+      author,
       link,
-      feed,
       avatar,
-      since: dateOnly(new Date())!,
-      inCircle: 1,
-      comment: note,
+      feed,
+      desc,
+      contact,
+      note,
+      backlinkOk,
+      backlinkCheckedAt: backlink.detail === null ? null : nowDb,
+      backlinkDetail: backlink.detail,
+      status: cfg.apply.autoApprove ? 'approved' : 'pending',
+      reviewNote: null,
+      reviewedAt: null,
     }
-    // 建友链与写申请在同一事务内完成
-    try {
-      const created = createAutoApprovedApplication(db, groupId, friend, application, nowDb)
-      applicationId = created.applicationId
-      status = 'approved'
-    } catch (e) {
-      if (isUniqueConstraintError(e)) throw new AppError(409, 'duplicate_link', '该链接已在友链中')
-      throw e
+
+    let status: ApplyResult['status'] = 'pending'
+    let applicationId: number
+
+    if (cfg.apply.autoApprove) {
+      const groupId = ensureGroupByName(db, '未分组')
+      const friend: Omit<FriendInsert, 'groupId'> = {
+        author: author ?? siteName,
+        title: siteName,
+        desc,
+        link,
+        feed,
+        avatar,
+        since: dateOnly(new Date())!,
+        inCircle: 1,
+        comment: note,
+      }
+      // 建友链与写申请在同一事务内完成
+      try {
+        const created = createAutoApprovedApplication(db, groupId, friend, application, nowDb)
+        applicationId = created.applicationId
+        status = 'approved'
+      } catch (e) {
+        if (isUniqueConstraintError(e)) throw new AppError(409, 'duplicate_link', '该链接已在友链中')
+        throw e
+      }
+    } else {
+      try {
+        applicationId = insertApplication(db, application)
+      } catch (e) {
+        if (isUniqueConstraintError(e)) throw new AppError(409, 'already_pending', '该链接已有待审申请')
+        throw e
+      }
     }
-  } else {
-    applicationId = insertApplication(db, application)
+
+    return { id: applicationId, status, backlink }
+  } catch (e) {
+    releaseApplyAttempt(db, ip, day)
+    throw e
   }
-
-  // 成功才计入限流；顺带清理过期计数
-  recordApplySuccess(db, ip, day)
-
-  return { id: applicationId, status, backlink }
 }

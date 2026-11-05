@@ -95,7 +95,31 @@ function normalizeItem(raw: unknown, fallbackGroup: string | null, index: number
 
   const explicitAuthor = pickString(item, ALIASES.author)
   const nickname = pickString(item, ALIASES.nickname)
-  const author = explicitAuthor ?? nickname ?? pickString(item, ALIASES.title) ?? hostOf(link)
+  const title = pickString(item, ALIASES.title)
+  const desc = pickString(item, ALIASES.desc)
+  const comment = pickString(item, ALIASES.comment)
+  const group = pickString(item, ALIASES.group) ?? fallbackGroup ?? undefined
+  const author = explicitAuthor ?? nickname ?? title ?? hostOf(link)
+  const archs = pickArchs(item)
+
+  // 与备份 schema 保持一致，避免导入出无法备份/恢复的行
+  const tooLong = (value: string | null | undefined, max: number) => typeof value === 'string' && value.length > max
+  if (tooLong(group, 100)) {
+    errors.push({ index, message: '分组名称不能超过 100 字' })
+    return null
+  }
+  if (tooLong(author, 200) || tooLong(nickname, 200) || tooLong(title, 200)) {
+    errors.push({ index, message: '作者/趣称/标题不能超过 200 字' })
+    return null
+  }
+  if (tooLong(desc, 2000) || tooLong(comment, 2000) || tooLong(hostOf(link), 200)) {
+    errors.push({ index, message: '简介/备注超出长度上限' })
+    return null
+  }
+  if (archs && (archs.length > 20 || archs.some((a) => a.length > 100))) {
+    errors.push({ index, message: '架构最多 20 项，每项不超过 100 字' })
+    return null
+  }
 
   // 只有显式出现 inCircle 才更新：缺省时保留旧值，新条目默认纳入
   const hasInCircle = Object.prototype.hasOwnProperty.call(item, 'inCircle')
@@ -106,19 +130,19 @@ function normalizeItem(raw: unknown, fallbackGroup: string | null, index: number
   if (sinceRaw && !since) errors.push({ index, message: 'since 不是合法日期（YYYY-MM-DD）' })
 
   return {
-    group: pickString(item, ALIASES.group) ?? fallbackGroup ?? undefined,
+    group,
     author,
     authorProvided: explicitAuthor !== null,
     nickname,
-    title: pickString(item, ALIASES.title),
-    desc: pickString(item, ALIASES.desc),
+    title,
+    desc,
     link,
     feed: pickHttpUrl(item, ALIASES.feed, index, 'feed', errors),
     icon: pickHttpUrl(item, ALIASES.icon, index, 'icon', errors),
     avatar: pickHttpUrl(item, ALIASES.avatar, index, 'avatar', errors),
-    archs: pickArchs(item),
+    archs,
     since: since ?? dateOnly(new Date())!,
-    comment: pickString(item, ALIASES.comment),
+    comment,
     inCircle,
     status,
   }

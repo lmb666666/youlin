@@ -198,23 +198,37 @@ export function replaceAllData(
       tx.insert(sourceState).values(stateRows.slice(i, i + CHUNK)).run()
     }
 
-    const applicationRows = data.applications.map((a) => ({
-      siteName: a.siteName,
-      author: a.author ?? null,
-      link: a.link,
-      avatar: a.avatar ?? null,
-      feed: a.feed ?? null,
-      desc: a.desc ?? null,
-      contact: a.contact ?? null,
-      note: a.note ?? null,
-      backlinkOk: boolInt(a.backlinkOk),
-      backlinkCheckedAt: a.backlinkCheckedAt ? dbTime(a.backlinkCheckedAt) : null,
-      backlinkDetail: a.backlinkDetail ?? null,
-      status: a.status,
-      reviewNote: a.reviewNote ?? null,
-      createdAt: a.createdAt ? dbTime(a.createdAt) : sql`datetime('now')`,
-      reviewedAt: a.reviewedAt ? dbTime(a.reviewedAt) : null,
-    }))
+    // 旧备份可能含重复 pending；保留第一条，其余按已拒绝恢复，避免新唯一索引导致整包失败
+    const pendingLinks = new Set<string>()
+    const applicationRows = data.applications.map((a) => {
+      let status = a.status
+      let reviewNote = a.reviewNote ?? null
+      if (status === 'pending') {
+        if (pendingLinks.has(a.link)) {
+          status = 'rejected'
+          reviewNote = `${reviewNote ? `${reviewNote}；` : ''}重复待审链接（恢复时自动合并）`
+        } else {
+          pendingLinks.add(a.link)
+        }
+      }
+      return {
+        siteName: a.siteName,
+        author: a.author ?? null,
+        link: a.link,
+        avatar: a.avatar ?? null,
+        feed: a.feed ?? null,
+        desc: a.desc ?? null,
+        contact: a.contact ?? null,
+        note: a.note ?? null,
+        backlinkOk: boolInt(a.backlinkOk),
+        backlinkCheckedAt: a.backlinkCheckedAt ? dbTime(a.backlinkCheckedAt) : null,
+        backlinkDetail: a.backlinkDetail ?? null,
+        status,
+        reviewNote,
+        createdAt: a.createdAt ? dbTime(a.createdAt) : sql`datetime('now')`,
+        reviewedAt: a.reviewedAt ? dbTime(a.reviewedAt) : null,
+      }
+    })
     for (let i = 0; i < applicationRows.length; i += CHUNK) {
       tx.insert(applications).values(applicationRows.slice(i, i + CHUNK)).run()
     }

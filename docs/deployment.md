@@ -7,7 +7,7 @@
 ## 前置条件
 
 - Docker 24+ 与 Docker Compose v2
-- 一个域名（可选；直接用 `http://IP:8787` 也能跑）
+- 一个域名（可选；直连需要把 Compose 端口改成 `8787:8787`，并设置 `TRUST_PROXY=off`）
 - 反向代理可选，推荐 Caddy 或 Nginx 负责 HTTPS
 
 ## 1. 启动
@@ -18,17 +18,17 @@ cp .env.example .env      # 填 ADMIN_TOKEN（openssl rand -hex 32）
 docker compose up -d      # 默认拉取 ghcr.io/lmb666666/youlin:latest
 ```
 
-打开 `http://127.0.0.1:8787/admin` 登录。数据在命名卷 `youlin_youlin-data`（容器内 `/data/youlin.db`），首次启动自动建表，重启和升级都不丢数据。
+在服务器本机打开 `http://127.0.0.1:8787/admin` 登录（远程请先配置反向代理）。数据在命名卷 `youlin_youlin-data`（容器内 `/data/youlin.db`），首次启动自动建表，重启和升级都不丢数据。
 
 镜像同时提供 amd64 与 arm64，NAS、ARM 小主机也能跑。Compose 默认启用只读根文件系统、`cap_drop: ALL`、`no-new-privileges` 与 init；自行 `docker run` 时建议加上同样参数，只需要把 `/data` 挂成可写卷。
 
 想自己构建镜像：
 
 ```bash
-docker compose up -d --build
-# 或
 docker build -t youlin:local .
 ```
+
+然后把 `compose.yaml` 里的 `image:` 改成 `youlin:local`（或取消注释 `build: .` 后执行 `docker compose up -d --build`）。
 
 Fork 项目后，自己的 Docker workflow 会把镜像推到 `ghcr.io/<你的用户名>/youlin`，把 compose 里的 `image` 改成对应地址即可。
 
@@ -45,10 +45,13 @@ Fork 项目后，自己的 Docker workflow 会把镜像推到 `ghcr.io/<你的�
 | `CRON_ENABLED` | `true` | 是否在进程内跑抓取轮转与自动备份 |
 | `CRON_INTERVAL_SECONDS` | `300` | 定时作业检查间隔，最小 30 秒 |
 | `LOG_LEVEL` | `info` | 日志级别：`silent` / `debug` / `info` / `warn` / `error`；输出为 JSON |
+| `TRUST_PROXY` | `off` | 反向代理信任级别：`off` / `loopback` / `private`；仅在使用可信反代时开启 |
 | `TURNSTILE_SECRET` | 空 | 申请页人机验证；开启 `apply.turnstile` 时才需要 |
 | `WEBDAV_PASSWORD` | 空 | WebDAV 备份密码（地址与用户名在设置页） |
 | `GITHUB_PAT` | 空 | 触发接入方重建（`github_dispatch` 模式） |
 | `YOULIN_CONFIG_OVERRIDES` | 空 | JSON 配置覆盖，优先级高于设置页 |
+
+**端口**：Compose 的端口映射会读取 `.env` 的 `PORT`；不要把容器内 `HOST` 改成 `127.0.0.1`，否则端口发布不可达。Compose 默认 `TRUST_PROXY=private`（同机反代）；直连发布端口时改为 `off`。
 
 **单实例部署**：SQLite 是单写者，不要同时起多个副本挂同一个数据卷。调度器另有数据库锁兜底——误起多个实例时同一轮只会有一个实例执行抓取/备份，但共享 SQLite 仍不是多副本方案。
 
@@ -70,6 +73,11 @@ Nginx 示例：
 server {
     listen 443 ssl;
     server_name links.example.com;
+    ssl_certificate     /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
+
+    # 备份恢复最大 16 MB，给代理留余量
+    client_max_body_size 20m;
 
     location / {
         proxy_pass http://127.0.0.1:8787;
@@ -81,7 +89,7 @@ server {
 ```
 
 - 会话 Cookie 根据 `X-Forwarded-Proto` 决定是否加 `Secure`。
-- 限流按 `X-Forwarded-For` 最后一档识别真实来源 IP（由可信代理追加）；直连场景直接取 socket 地址。
+- 使用反向代理时设置 `TRUST_PROXY=private`（同级/内网代理）或 `loopback`（仅本机代理），限流才会采信 `X-Forwarded-For` 最后一档；直连暴露端口时保持 `off`，防止伪造。
 - 不要在 Node 前面再套 Cloudflare 代理，代理回源会重新引入额外延迟。
 
 ## 4. 升级

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { env, SELF } from './helpers'
+import { acquireLock, releaseLock } from '../src/repositories/locks'
+import { SCHEDULER_LOCK_KEY, SCHEDULER_LOCK_TTL_MS } from '../src/server/scheduler-lock'
 
 const BASE = 'https://example.com'
 
@@ -44,6 +46,20 @@ beforeEach(async () => {
   ])
 })
 afterEach(() => vi.unstubAllGlobals())
+
+describe('手动轮转调度锁', () => {
+  it('调度锁被其他任务持有时返回 409', async () => {
+    await seedFriend('feed')
+    expect(await acquireLock(env.DB, SCHEDULER_LOCK_KEY, 'other', SCHEDULER_LOCK_TTL_MS)).toBe(true)
+    try {
+      const res = await authed('/api/admin/health/run', { method: 'POST' })
+      expect(res.status).toBe(409)
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('round_running')
+    } finally {
+      await releaseLock(env.DB, SCHEDULER_LOCK_KEY, 'other')
+    }
+  })
+})
 
 describe('POST /api/admin/crawl/:friendId（单源手动抓取）', () => {
   it('未登录 401；不存在的友链 404', async () => {

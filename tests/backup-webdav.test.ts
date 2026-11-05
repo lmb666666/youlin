@@ -298,6 +298,17 @@ describe('WebDAV 备份', () => {
     )
   })
 
+  it('删除已不存在的备份视为成功，保留策略不中断', async () => {
+    const { WebDavClient } = await import('../src/backup/webdav')
+    const client = new WebDavClient({
+      url: 'https://dav.test/dav',
+      username: 'davuser',
+      password: 'davpass',
+      fetchImpl: (async () => new Response(null, { status: 404 })) as typeof fetch,
+    })
+    await expect(client.remove('youlin-backup-20260101-000000.json.gz')).resolves.toBeUndefined()
+  })
+
   it('非 ASCII 凭据按 UTF-8 编码（btoa 直接处理会抛错）', async () => {
     const { WebDavClient } = await import('../src/backup/webdav')
     let seen = ''

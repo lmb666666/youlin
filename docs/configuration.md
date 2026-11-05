@@ -99,7 +99,7 @@
 | --- | --- | --- |
 | `apply.enabled` | `true` | 申请通道。关闭后申请页显示停用。 |
 | `apply.rateLimitPerDay` | `3` | 每 IP 每天上限。按天限流，超出返回 429。 |
-| `apply.turnstile` | `true` | 人机验证。关闭后提交不再验证人机。 |
+| `apply.turnstile` | `false` | 人机验证。开启后需配置 Site Key 与 TURNSTILE_SECRET。 |
 | `apply.turnstileSiteKey` | 空 | Turnstile Site Key。公开值，密钥放 TURNSTILE_SECRET。 |
 | `apply.backlinkPolicy` | `mark` | 反链策略（mark / reject / off）。mark 仅标记 / reject 未检测到反链即拒绝 / off 不检测。 |
 | `apply.autoApprove` | `false` | 自动通过。提交即入库（不推荐，垃圾提交无人工拦截）。 |

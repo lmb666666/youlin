@@ -140,4 +140,20 @@ describe('相对链接归一与字段截断', () => {
     const feed = await parseFeed(xml)
     expect(feed.entries[0]!.title).toHaveLength(500)
   })
+
+  it('解析 JSON Feed 1.x，并以 feed 地址归一相对链接', async () => {
+    const json = JSON.stringify({
+      version: 'https://jsonfeed.org/version/1.1',
+      title: 'JSON 博客',
+      items: [
+        { id: '1', title: '第一篇', url: 'posts/1.html', date_published: '2026-10-01T00:00:00Z', authors: [{ name: '甲' }] },
+        { id: '2', title: '第二篇', external_url: 'https://other.example.com/2', date_modified: '2026-10-02T00:00:00Z' },
+      ],
+    })
+    const feed = await parseFeed(json, 'https://json.example.com/feed.json')
+    expect(feed.title).toBe('JSON 博客')
+    expect(feed.entries).toHaveLength(2)
+    expect(feed.entries[0]).toMatchObject({ guid: '1', link: 'https://json.example.com/posts/1.html', author: '甲' })
+    expect(feed.entries[1]!.link).toBe('https://other.example.com/2')
+  })
 })

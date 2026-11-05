@@ -21,6 +21,11 @@ export function loadDotEnv(file = '.env'): void {
   }
 }
 
+function trustProxy(): 'off' | 'loopback' | 'private' {
+  const v = optional('TRUST_PROXY')?.toLowerCase()
+  return v === 'loopback' || v === 'private' ? v : 'off'
+}
+
 function optional(name: string): string | undefined {
   const v = process.env[name]?.trim()
   return v ? v : undefined
@@ -39,5 +44,6 @@ export function createEnv(db: Env['DB']): Env {
     GITHUB_PAT: optional('GITHUB_PAT'),
     WEBDAV_PASSWORD: optional('WEBDAV_PASSWORD'),
     YOULIN_CONFIG_OVERRIDES: optional('YOULIN_CONFIG_OVERRIDES'),
+    TRUST_PROXY: trustProxy(),
   }
 }

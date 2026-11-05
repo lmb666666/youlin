@@ -16,6 +16,7 @@ import {
   markCrawlFailure as markFailureState,
   markNotModified,
   markRssSuccess,
+  markSkipped,
   replaceFriendArticles,
   selectDueSources,
   updateDiscoveredFeed,
@@ -169,7 +170,11 @@ export async function crawlSource(db: Env['DB'], env: Env, cfg: AppConfig, frien
     return 'failed'
   }
 
-  if (!cfg.linkCheck.enabled) return 'skipped'
+  if (!cfg.linkCheck.enabled) {
+    const base = Math.round(nextIntervalHours(null, cfg, cfg.linkCheck.maxAgeHours))
+    markSkipped(db, friend.id, `+${base * 60} minutes`)
+    return 'skipped'
+  }
   return await healthDiagnosis(db, env, cfg, friend)
 }
 

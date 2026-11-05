@@ -13,6 +13,7 @@ git clone https://github.com/lmb666666/youlin.git
 cd youlin
 pnpm install
 cp .env.example .env      # 本地开发口令，ADMIN_TOKEN 可随便填
+pnpm build                # 生成 web/dist（首次或改前端后）
 pnpm seed                 # 可选：应用迁移并写入示例数据
 pnpm dev                  # http://127.0.0.1:8787 → /admin 进入管理台
 ```

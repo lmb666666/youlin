@@ -113,7 +113,10 @@ export const applications = sqliteTable(
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     reviewedAt: text('reviewed_at'),
   },
-  (t) => [index('idx_applications_status').on(t.status, t.createdAt)],
+  (t) => [
+    index('idx_applications_status').on(t.status, t.createdAt),
+    uniqueIndex('idx_applications_pending_link').on(t.link).where(sql`${t.status} = 'pending'`),
+  ],
 )
 
 export const applyRateLimit = sqliteTable(

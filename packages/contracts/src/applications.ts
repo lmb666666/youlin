@@ -30,7 +30,7 @@ export const applicationApproveSchema = z
   .object({
     groupId: z.number().int().positive().optional(),
     // 可编辑后再入库（DESIGN §7：字段自动填充，可编辑）
-    author: z.string().max(100).optional(),
+    author: z.string().max(200).optional(),
     title: z.string().max(200).optional(),
     desc: z.string().max(2000).optional(),
     // 与 friends 表单同一校验口径（httpUrl），放行 javascript: 等任意 scheme 会流入公开接口

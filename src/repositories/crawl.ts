@@ -168,10 +168,24 @@ export function markNotModified(db: Db, friendId: number, nextModifier: string, 
       failCount: 0,
       unreachableSince: null,
       rssUnavailableSince: null,
+      lastPostDaysAgo: sql`CASE WHEN last_post_published IS NULL THEN NULL ELSE MAX(0, CAST(julianday('now') - julianday(last_post_published) AS INTEGER)) END`,
+      lastError: null,
       lastOkAt: sql`datetime('now')`,
       checkedAt: sql`datetime('now')`,
       nextCheckAt: sql`datetime('now', ${nextModifier})`,
       latencyMs,
+    })
+    .where(eq(sourceState.friendId, friendId))
+    .run()
+}
+
+/** 跳过本轮（无 feed 且体检关闭等）也要推进 next_check_at，避免永久占用队首 */
+export function markSkipped(db: Db, friendId: number, nextModifier: string): void {
+  getOrm(db)
+    .update(sourceState)
+    .set({
+      checkedAt: sql`datetime('now')`,
+      nextCheckAt: sql`datetime('now', ${nextModifier})`,
     })
     .where(eq(sourceState.friendId, friendId))
     .run()

@@ -14,6 +14,10 @@ coverage
 .env
 .env.*
 !.env.example
+.dev.vars
+.wrangler
+*.db
+*.db-*
 .DS_Store
 .idea
 .vscode

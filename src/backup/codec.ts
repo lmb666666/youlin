@@ -15,9 +15,32 @@ export async function gzipBytes(input: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 
-export async function gunzipBytes(input: Uint8Array): Promise<Uint8Array> {
+export async function gunzipBytes(input: Uint8Array, maxBytes = Number.POSITIVE_INFINITY): Promise<Uint8Array> {
   const stream = new Blob([input as unknown as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'))
-  return new Uint8Array(await new Response(stream).arrayBuffer())
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {})
+        throw new Error('inflated_too_large')
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  const out = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return out
 }
 
 /**
@@ -36,20 +59,14 @@ export async function decodeBackup(bytes: Uint8Array): Promise<BackupEnvelope> {
 
   let raw: Uint8Array
   if (isGzip(bytes)) {
-    // gzip 尾部 4 字节是解压后长度（mod 2^32）：先粗判，避免压缩炸弹把内存打满
-    if (bytes.length >= 18) {
-      const isize = new DataView(bytes.buffer, bytes.byteOffset + bytes.byteLength - 4, 4).getUint32(0, true)
-      if (isize > BACKUP_MAX_INFLATED) {
+    try {
+      // 边解压边计数，不依赖 gzip ISIZE（它只有 32 位，会回绕）
+      raw = await gunzipBytes(bytes, BACKUP_MAX_INFLATED)
+    } catch (e) {
+      if (e instanceof Error && e.message === 'inflated_too_large') {
         throw new AppError(413, 'file_too_large', '解压后的备份体积超出上限')
       }
-    }
-    try {
-      raw = await gunzipBytes(bytes)
-    } catch {
       throw new AppError(400, 'bad_gzip', '无法解压：文件不是有效的 gzip')
-    }
-    if (raw.byteLength > BACKUP_MAX_INFLATED) {
-      throw new AppError(413, 'file_too_large', '解压后的备份体积超出上限')
     }
   } else {
     raw = bytes

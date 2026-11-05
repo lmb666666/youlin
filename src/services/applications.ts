@@ -10,6 +10,7 @@ import {
   findFriendIdByLinks,
   listApplications,
   rejectApplication as commitRejection,
+  deleteReviewedApplications,
   type FriendInsert,
 } from '../repositories/applications'
 import type { ApplicationRow } from '../server/schema'
@@ -98,6 +99,10 @@ export async function approveApplication(
   }
 
   return { friendId, rebuild }
+}
+
+export function clearReviewedApplications(db: Db): number {
+  return deleteReviewedApplications(db)
 }
 
 export function rejectApplication(db: Db, id: number, raw: unknown): void {

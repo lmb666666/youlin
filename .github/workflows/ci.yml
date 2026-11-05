@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Version consistency
+        run: node scripts/check-version.mjs
+
       - name: Lint
         run: pnpm lint
 
@@ -47,3 +50,42 @@ jobs:
         run: |
           pnpm docs:config
           git diff --exit-code docs/configuration.md
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker build -t youlin-ci .
+
+      - name: Smoke test container
+        run: |
+          set -eu
+          docker volume create youlin-ci-data
+          docker run -d --name youlin-ci \
+            --read-only --tmpfs /tmp:size=64m \
+            --cap-drop ALL --security-opt no-new-privileges \
+            -p 127.0.0.1:18787:8787 \
+            -v youlin-ci-data:/data \
+            -e ADMIN_TOKEN=ci-admin-token -e CRON_ENABLED=false \
+            youlin-ci
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:18787/healthz >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18787/healthz | grep -q '"ok":true'
+          curl -fsS -H 'Content-Type: application/json' \
+            -d '{"token":"ci-admin-token"}' \
+            http://127.0.0.1:18787/api/admin/login | grep -q '"ok":true'
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs youlin-ci || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f youlin-ci || true
+          docker volume rm youlin-ci-data || true

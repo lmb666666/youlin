@@ -3,6 +3,7 @@ import { readJsonOrThrow } from '../../util/http'
 import { parseId } from '../../services/validation'
 import {
   approveApplication,
+  clearReviewedApplications,
   listApplicationViews,
   rebuildNow,
   rejectApplication,
@@ -23,6 +24,11 @@ export function applicationRoutes() {
   app.get('/api/admin/applications', (c) =>
     c.json({ applications: listApplicationViews(c.env.DB, c.req.query('status') ?? 'pending') }),
   )
+
+  app.delete('/api/admin/applications/reviewed', (c) => {
+    const deleted = clearReviewedApplications(c.env.DB)
+    return c.json({ ok: true, deleted })
+  })
 
   app.post('/api/admin/applications/:id/approve', async (c) => {
     const result = await approveApplication(

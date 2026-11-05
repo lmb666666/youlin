@@ -1,3 +1,5 @@
+import { lookup } from 'node:dns/promises'
+import { isIP } from 'node:net'
 import type { Env, AppConfig } from '../types'
 import { isPrivateIp } from '../util/ip'
 import { guardedDispatcher } from '../server/net'
@@ -27,6 +29,8 @@ export interface FetchResult {
   finalUrl: string
   latencyMs: number
   error?: string
+  /** 失败原因是安全策略而不是网络错误：代理回退不得重试 */
+  blocked?: boolean
 }
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024
@@ -43,9 +47,37 @@ export function isPrivateTarget(url: string): boolean {
     return true
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return true
-  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '')
   if (NON_PUBLIC_HOST.test(host)) return true
+  if (host.includes(':')) return isPrivateIp(host)
+  if (!host.includes('.')) return true // Docker/单标签主机名（redis、metadata 等）一律不抓
   return isPrivateIp(host)
+}
+
+/** 代理首跳不经过 guardedDispatcher，先在本地解析目标，任何私网结果都拒绝 */
+async function assertProxyTargetPublic(url: string): Promise<void> {
+  const host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '')
+  if (isIP(host)) {
+    if (isPrivateIp(host)) throw Object.assign(new Error(`目标地址不可抓取（内网或非 http(s) 地址）`), { name: 'BlockedPrivateAddress' })
+    return
+  }
+  let addresses: { address: string }[]
+  try {
+    addresses = await lookup(host, { all: true, verbatim: true })
+  } catch {
+    throw new Error(`无法解析目标地址：${host}`)
+  }
+  const bad = addresses.find((a) => isPrivateIp(a.address))
+  if (bad) {
+    throw Object.assign(new Error(`目标地址解析到内网/环回地址（${bad.address}）`), { name: 'BlockedPrivateAddress' })
+  }
+}
+
+function isPolicyError(err: unknown): boolean {
+  const e = err as { name?: string; message?: string; cause?: { name?: string; message?: string } } | undefined
+  const name = e?.cause?.name ?? e?.name
+  const message = e?.cause?.message ?? e?.message ?? ''
+  return name === 'BlockedPrivateAddress' || message.includes('目标地址不可抓取') || message.includes('内网/环回')
 }
 
 /** 读取响应体并限制大小；超限时中止读取（feed/首页远用不到这个量级） */
@@ -82,6 +114,7 @@ export async function fetchRemote(env: Env, opts: FetchOptions): Promise<FetchRe
   void env
   const { cfg } = opts
   const started = Date.now()
+  const deadline = started + opts.timeoutSeconds * 1000
   const proxy = cfg.proxy.url
   const mode = cfg.proxy.mode
 
@@ -89,26 +122,27 @@ export async function fetchRemote(env: Env, opts: FetchOptions): Promise<FetchRe
   if (isPrivateTarget(opts.url)) {
     return {
       ok: false, status: 0, headers: new Headers(), body: null, finalUrl: opts.url,
-      latencyMs: Date.now() - started, error: '目标地址不可抓取（内网或非 http(s) 地址）',
+      latencyMs: Date.now() - started, error: '目标地址不可抓取（内网或非 http(s) 地址）', blocked: true,
     }
   }
 
   const attempt = async (url: string, viaProxy: boolean): Promise<FetchResult> => {
-    const fail = (error: string): FetchResult => ({
-      ok: false, status: 0, headers: new Headers(), body: null, finalUrl: url,
-      latencyMs: Date.now() - started, error,
+    let target = url
+    const fail = (error: string, blocked = false): FetchResult => ({
+      ok: false, status: 0, headers: new Headers(), body: null, finalUrl: target,
+      latencyMs: Date.now() - started, error, blocked,
     })
     try {
-      let current = url
+      if (viaProxy) await assertProxyTargetPublic(url)
+      let current = viaProxy ? proxy + url : url
       for (let hop = 0; ; hop++) {
-        // 首跳走代理时不校验：代理地址是运维配置（常见为本机 127.0.0.1 的代理），
-        // 只校验入口处的抓取目标；重定向后的目标一律直连，必须复检
-        if ((hop > 0 || !viaProxy) && isPrivateTarget(current)) {
-          return fail('目标地址不可抓取（内网或非 http(s) 地址）')
-        }
-        // Node 侧只对直连目标挂私网 DNS 校验；首跳走代理时代理本身可能是 127.0.0.1，
-        // 不能误杀。代理后的重定向仍然直连，所以 hop>0 同样要挂。
+        // 首跳走代理时请求 URL 是代理，但重定向后的目标一律直连，必须复检
         const direct = hop > 0 || !viaProxy
+        if (direct && isPrivateTarget(current)) {
+          return fail('目标地址不可抓取（内网或非 http(s) 地址）', true)
+        }
+        const remaining = deadline - Date.now()
+        if (remaining <= 0) return fail('请求超时')
         const init = {
           method: 'GET',
           redirect: 'manual',
@@ -117,30 +151,31 @@ export async function fetchRemote(env: Env, opts: FetchOptions): Promise<FetchRe
             Accept: 'text/html,application/xhtml+xml,application/xml,application/rss+xml,application/atom+xml;q=0.9,*/*;q=0.8',
             ...opts.headers,
           },
-          signal: AbortSignal.timeout(opts.timeoutSeconds * 1000),
+          signal: AbortSignal.timeout(remaining),
           ...(direct ? { dispatcher: guardedDispatcher } : {}),
         } as RequestInit & { dispatcher?: unknown }
         const res = await fetch(current, init)
         const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null
         if (!location || hop >= MAX_REDIRECTS) {
           const body = await readBodyWithLimit(res)
-          // 代理模式下 finalUrl 保持为抓取目标（相对 feed 发现等要以目标为基准）
           return {
             ok: res.ok, status: res.status, headers: res.headers, body,
-            finalUrl: viaProxy ? opts.url : current, latencyMs: Date.now() - started,
+            finalUrl: target, latencyMs: Date.now() - started,
           }
         }
-        current = new URL(location, current).toString()
+        // 相对 Location 必须以目标站点为 base，不能以代理地址为 base
+        target = new URL(location, target).toString()
+        current = target
       }
     } catch (e) {
-      return fail(e instanceof Error ? e.message : String(e))
+      return fail(e instanceof Error ? e.message : String(e), isPolicyError(e))
     }
   }
 
-  if (mode === 'always' && proxy) return attempt(proxy + opts.url, true)
+  if (mode === 'always' && proxy) return attempt(opts.url, true)
   const direct = await attempt(opts.url, false)
-  // fallback：直连网络层失败（拿到任何 HTTP 状态码都不算）再走代理
-  if (direct.error && mode === 'fallback' && proxy) return attempt(proxy + opts.url, true)
+  // fallback：只在网络层失败时重试；安全策略拒绝（如 DNS 指向内网）绝不走代理
+  if (direct.error && !direct.blocked && mode === 'fallback' && proxy) return attempt(opts.url, true)
   return direct
 }
 

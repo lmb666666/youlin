@@ -18,6 +18,17 @@ const bareHost = z
 /** 需要协议校验的配置项；其余 string 保持宽松（可为空/域名/前缀） */
 const SPECIAL_SCHEMAS: Record<string, z.ZodType> = {
   'site.url': z.union([z.literal(''), httpUrl, bareHost]),
+  'backup.webdavUrl': z
+    .union([z.literal(''), httpUrl])
+    .refine((v) => {
+      if (!v) return true
+      const u = new URL(v)
+      return u.username === '' && u.password === ''
+    }, 'WebDAV 地址不能包含账号密码：用户名单独填写，密码放 WEBDAV_PASSWORD'),
+  'linkCheck.backoffLadder': z
+    .array(z.tuple([z.number().int().min(0), z.number().int().min(1)]))
+    .min(1)
+    .refine((rows) => rows.every((row, i) => i === 0 || row[0] > rows[i - 1]![0]), '阶梯需按失联天数升序'),
   'site.logo': z.union([
     z.literal(''),
     httpUrl,
@@ -33,7 +44,7 @@ function fieldZod(f: ConfigField): z.ZodType {
     case 'boolean':
       return z.boolean()
     case 'number': {
-      let s = z.number()
+      let s = z.number().int('需为整数')
       if (f.min !== undefined) s = s.min(f.min)
       if (f.max !== undefined) s = s.max(f.max)
       return s

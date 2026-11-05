@@ -54,5 +54,9 @@ export function deleteGroup(db: Db, id: number): void {
 }
 
 export function reorderGroups(db: Db, raw: unknown): void {
-  writeGroupOrder(db, parseInput(groupReorderSchema, raw).items)
+  const items = parseInput(groupReorderSchema, raw).items
+  for (const item of items) {
+    if (!findGroupById(db, item.id)) throw new AppError(404, 'not_found', `分组 #${item.id} 不存在`)
+  }
+  writeGroupOrder(db, items)
 }

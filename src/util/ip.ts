@@ -43,6 +43,23 @@ export function isPublicIp(ip: string): boolean {
   return !isPrivateIp(ip)
 }
 
+export function isLoopbackIp(ip: string): boolean {
+  const lower = ip.toLowerCase()
+  if (lower === '::' || lower === '::1') return true
+  if (/^127\./.test(ip)) return true
+  const mapped = lower.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/)
+  if (mapped?.[1]) return isLoopbackIp(mapped[1])
+  if (lower.startsWith('::ffff:')) {
+    const tail = lower.slice(7)
+    if (tail.includes('.')) return isLoopbackIp(tail.split(':').pop() ?? '')
+    const groups = tail.split(':')
+    const hi = parseInt(groups[groups.length - 2] ?? '', 16)
+    const lo = parseInt(groups[groups.length - 1] ?? '', 16)
+    if (Number.isFinite(hi) && Number.isFinite(lo)) return hi >> 8 === 0x7f && (hi & 0xff) === 0
+  }
+  return false
+}
+
 function xffParts(xff: string | undefined): string[] {
   return (xff ?? '').split(',').map((s) => s.trim()).filter(Boolean)
 }
@@ -58,8 +75,14 @@ export function clientIp(c: { req: { header: (k: string) => string | undefined }
   const socket = nodeRemoteAddress(c.env)
   const xff = xffParts(c.req.header('x-forwarded-for'))
 
-  // 反代场景取 XFF 最后一档（由可信代理追加）；直连场景直接采信 socket。
+  // 无 socket（测试/嵌入式调用）时只能依赖 XFF 最后一档
   if (socket === null) return xff[xff.length - 1] ?? 'local'
-  if (!isPublicIp(socket)) return xff[xff.length - 1] ?? socket
+  if (isPublicIp(socket)) return socket
+
+  // 私网 peer 可能是反代，也可能是 Docker 端口发布/局域网直连。只有显式信任时才采信 XFF。
+  const mode = (c.env as { TRUST_PROXY?: unknown } | undefined)?.TRUST_PROXY
+  if (mode === 'private' || (mode === 'loopback' && isLoopbackIp(socket))) {
+    return xff[xff.length - 1] ?? socket
+  }
   return socket
 }

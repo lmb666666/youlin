@@ -27,12 +27,14 @@ services:
     pids_limit: 100
     stop_grace_period: 15s
     ports:
-      - "127.0.0.1:8787:8787"
+      - "127.0.0.1:${PORT:-8787}:${PORT:-8787}"
     env_file:
       - .env
     environment:
       # 数据卷固定挂到 /data，SQLite（含 WAL）都在这里
       TZ: Asia/Shanghai
+      # 默认假设同机反向代理；直连暴露端口时改成 off，避免伪造 X-Forwarded-For
+      TRUST_PROXY: ${TRUST_PROXY:-private}
     volumes:
       - youlin-data:/data
     # 镜像内置 healthcheck（GET /healthz），无需重复声明

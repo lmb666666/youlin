@@ -134,7 +134,14 @@ export function deleteFriend(db: Db, env: Env, cfg: AppConfig, id: number): void
 }
 
 export function reorderFriends(db: Db, raw: unknown): void {
-  writeFriendOrder(db, parseInput(friendReorderSchema, raw).items)
+  const items = parseInput(friendReorderSchema, raw).items
+  for (const item of items) {
+    if (!findFriendById(db, item.id)) throw new AppError(404, 'not_found', `友链 #${item.id} 不存在`)
+    if (item.groupId !== undefined && !findGroupById(db, item.groupId)) {
+      throw new AppError(400, 'unknown_group', '分组不存在')
+    }
+  }
+  writeFriendOrder(db, items)
 }
 
 /** 唯一键冲突且来自 friends.link 时抛 409；其他错误交给调用方原样抛出 */
