@@ -49,6 +49,7 @@ COPY --from=build /app/migrations ./migrations
 # 数据目录归 node 所有；用命名卷时卷会继承这里的属主
 RUN mkdir -p /data && chown node:node /data
 USER node
+STOPSIGNAL SIGTERM
 
 VOLUME ["/data"]
 EXPOSE 8787

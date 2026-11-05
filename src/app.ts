@@ -4,6 +4,7 @@ import type { AppEnv } from './types'
 import { loadConfig } from './config/loader'
 import { isMissingTableError } from './util/http'
 import { AppError } from './errors'
+import { logger } from './log'
 import { corsHeaders } from './util/cors'
 import type { AppConfig } from './types'
 import { publicRoutes } from './routes/links'
@@ -75,6 +76,6 @@ app.onError((err, c) => {
       },
     })
   }
-  console.error('[youlin] unhandled error:', err instanceof Error ? err.stack : err)
+  logger.error({ err }, 'unhandled request error')
   return errorJson(c, 500, { error: { code: 'internal', message: '服务器内部错误' } })
 })

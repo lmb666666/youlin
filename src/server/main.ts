@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { serve } from '@hono/node-server'
 import Database from 'better-sqlite3'
 import { app } from '../app'
@@ -9,17 +10,20 @@ import { createFetchHandler } from './assets'
 import { SqliteDb } from './db'
 import { createEnv, loadDotEnv } from './env'
 import { applyMigrations } from './migrations'
+import { acquireLock, releaseLock, renewLock } from '../repositories/locks'
+import { logger, resolveLogLevel } from '../log'
 import type { Env } from '../types'
 
 /**
  * Node 运行时入口：HTTP 服务 + 静态资源 + 定时作业。
  *
  * 环境变量：PORT / HOST / DB_PATH / WEB_ROOT / MIGRATIONS_DIR /
- *           CRON_ENABLED / CRON_INTERVAL_SECONDS / ADMIN_TOKEN（必填）/
+ *           CRON_ENABLED / CRON_INTERVAL_SECONDS / LOG_LEVEL / ADMIN_TOKEN（必填）/
  *           TURNSTILE_SECRET / GITHUB_PAT / WEBDAV_PASSWORD / YOULIN_CONFIG_OVERRIDES
  */
 
 loadDotEnv()
+logger.level = resolveLogLevel()
 
 const PORT = Number(process.env.PORT ?? 8787)
 const HOST = process.env.HOST ?? '0.0.0.0'
@@ -39,7 +43,7 @@ raw.pragma('busy_timeout = 5000')
 raw.pragma('foreign_keys = ON')
 
 const migration = applyMigrations(raw, MIGRATIONS_DIR)
-console.log(`[db] ${DB_PATH}：应用 ${migration.applied.length} 个迁移，跳过 ${migration.skipped} 个`)
+logger.info({ dbPath: DB_PATH, applied: migration.applied.length, skipped: migration.skipped }, 'database migrations applied')
 
 const db = new SqliteDb(raw)
 const env = createEnv(db)
@@ -53,25 +57,55 @@ const server = serve(
     hostname: HOST,
   },
   (info) => {
-    console.log(`[youlin] listening on http://${HOST}:${info.port}`)
-    console.log(`[youlin] 静态资源目录 ${path.resolve(WEB_ROOT)}`)
+    logger.info({ url: `http://${HOST}:${info.port}`, webRoot: path.resolve(WEB_ROOT) }, 'youlin listening')
   },
 )
 
+const SCHEDULER_LOCK_KEY = 'internal.schedulerLock'
+/** 锁 TTL 与续租间隔：进程崩溃后最多阻塞 TTL；长任务靠心跳续租 */
+const SCHEDULER_LOCK_TTL_MS = 10 * 60_000
+const SCHEDULER_LOCK_RENEW_MS = 2 * 60_000
+
 let running = false
+let schedulerLockOwner: string | null = null
 async function tick(): Promise<void> {
   if (running) {
-    console.warn('[cron] 上一轮尚未结束，跳过本次')
+    logger.debug('scheduler tick skipped: previous tick still running')
     return
   }
   running = true
+  const owner = randomUUID()
+  let locked = false
   try {
-    const { cfg } = await loadConfig(env.DB, env)
-    const summary = await runScheduledJobs(env.DB, env, cfg)
-    console.log('[cron] tick:', JSON.stringify({ crawl: summary.crawl, backup: summary.backup?.status ?? null }))
+    locked = await acquireLock(env.DB, SCHEDULER_LOCK_KEY, owner, SCHEDULER_LOCK_TTL_MS)
+    if (!locked) {
+      logger.debug('scheduler tick skipped: lock held by another instance')
+      return
+    }
+    schedulerLockOwner = owner
+    const heartbeat = setInterval(() => {
+      void renewLock(env.DB, SCHEDULER_LOCK_KEY, owner, SCHEDULER_LOCK_TTL_MS)
+        .then((ok) => {
+          if (!ok) logger.warn({ owner }, 'scheduler lock lost before tick finished')
+        })
+        .catch((err) => logger.warn({ err }, 'scheduler lock renew failed'))
+    }, SCHEDULER_LOCK_RENEW_MS)
+    try {
+      const { cfg } = await loadConfig(env.DB, env)
+      const summary = await runScheduledJobs(env.DB, env, cfg)
+      logger.info({ crawl: summary.crawl, backup: summary.backup?.status ?? null }, 'scheduler tick completed')
+    } finally {
+      clearInterval(heartbeat)
+    }
   } catch (err) {
-    console.error('[cron] 失败:', err instanceof Error ? err.stack : err)
+    logger.error({ err }, 'scheduler tick failed')
   } finally {
+    if (locked) {
+      await releaseLock(env.DB, SCHEDULER_LOCK_KEY, owner).catch((err) => {
+        logger.warn({ err }, 'scheduler lock release failed')
+      })
+      if (schedulerLockOwner === owner) schedulerLockOwner = null
+    }
     running = false
   }
 }
@@ -80,26 +114,39 @@ if (CRON_ENABLED) {
   // 首次稍作延迟，避免与启动时的迁移/连接争抢
   setTimeout(() => void tick(), 5_000).unref()
   setInterval(() => void tick(), CRON_INTERVAL_SECONDS * 1000).unref()
-  console.log(`[cron] 已启用，每 ${CRON_INTERVAL_SECONDS}s 检查一次`)
+  logger.info({ intervalSeconds: CRON_INTERVAL_SECONDS }, 'scheduler enabled')
 } else {
-  console.log('[cron] 已禁用（CRON_ENABLED=false）')
+  logger.info('scheduler disabled (CRON_ENABLED=false)')
 }
 
 // 常驻服务：单个后台任务漏网不该让整个实例退出（错误仍完整记录）
 process.on('unhandledRejection', (reason) => {
-  console.error('[youlin] 未处理的 Promise 拒绝:', reason instanceof Error ? reason.stack : reason)
+  logger.error({ err: reason }, 'unhandled promise rejection')
 })
 
-for (const sig of ['SIGTERM', 'SIGINT'] as const) {
-  process.on(sig, () => {
-    console.log(`[youlin] 收到 ${sig}，正在关闭`)
-    server.close(() => {
-      db.close()
-      process.exit(0)
+let shuttingDown = false
+async function shutdown(sig: string): Promise<void> {
+  if (shuttingDown) return
+  shuttingDown = true
+  logger.info({ signal: sig }, 'shutting down')
+  // 部署重启时尽快释放调度锁，避免新实例空等 TTL
+  if (schedulerLockOwner) {
+    const owner = schedulerLockOwner
+    schedulerLockOwner = null
+    await releaseLock(env.DB, SCHEDULER_LOCK_KEY, owner).catch((err) => {
+      logger.warn({ err }, 'scheduler lock release on shutdown failed')
     })
-    setTimeout(() => {
-      db.close()
-      process.exit(0)
-    }, 5_000).unref()
+  }
+  server.close(() => {
+    db.close()
+    process.exit(0)
   })
+  setTimeout(() => {
+    db.close()
+    process.exit(0)
+  }, 5_000).unref()
+}
+
+for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(sig, () => void shutdown(sig))
 }

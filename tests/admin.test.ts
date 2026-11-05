@@ -34,6 +34,7 @@ beforeEach(async () => {
     env.DB.prepare('DELETE FROM friends'),
     env.DB.prepare('DELETE FROM groups'),
     env.DB.prepare('DELETE FROM settings'),
+    env.DB.prepare('DELETE FROM login_attempts'),
   ])
 })
 
@@ -81,9 +82,15 @@ describe('鉴权', () => {
     }
     const blocked = await login(ip, 'test-admin-token') // 即使口令正确也被拦
     expect(blocked.status).toBe(429)
-    // 换 IP 不受影响
-    const other = await login('10.2.0.5')
+    const counted = await env.DB.prepare('SELECT COUNT(*) AS n FROM login_attempts WHERE ip = ?').bind(ip).first<{ n: number }>()
+    expect(counted?.n).toBe(5)
+
+    // 换 IP 不受影响；成功登录后清空自己的失败记录
+    const otherIp = '10.2.0.5'
+    const other = await login(otherIp)
     expect(other.status).toBe(200)
+    const reset = await env.DB.prepare('SELECT COUNT(*) AS n FROM login_attempts WHERE ip = ?').bind(otherIp).first<{ n: number }>()
+    expect(reset?.n).toBe(0)
   })
 })
 

@@ -1,5 +1,6 @@
 import type { AppConfig, Env } from '../types'
 import { runtimeGet, runtimeSet } from '../crawler/http'
+import { logger } from '../log'
 import { collectBackup } from './collect'
 import { gzipBytes } from './codec'
 import { backupFileName } from './format'
@@ -59,7 +60,7 @@ export async function runWebdavBackup(
       try {
         pruned = await client.prune(cfg.backup.retain)
       } catch (e) {
-        console.warn('[backup] 旧备份清理失败（不影响本次上传）：', e instanceof Error ? e.message : e)
+        logger.warn({ err: e }, 'backup prune failed (upload succeeded)')
       }
     }
     const status: BackupStatus = { at, ok: true, target: opts.target, bytes: gz.byteLength, file: name }

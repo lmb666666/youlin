@@ -126,6 +126,16 @@ export const applyRateLimit = sqliteTable(
   (t) => [primaryKey({ columns: [t.ip, t.day] })],
 )
 
+export const loginAttempts = sqliteTable(
+  'login_attempts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    ip: text('ip').notNull(),
+    at: integer('at').notNull(),
+  },
+  (t) => [index('idx_login_attempts_ip_at').on(t.ip, t.at)],
+)
+
 export const settings = sqliteTable('settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),

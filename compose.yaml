@@ -15,6 +15,17 @@ services:
     # build: .
     container_name: youlin
     restart: unless-stopped
+    # 容器加固：非 root 运行（镜像内 USER node）、只读根文件系统、无特权
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 100
+    stop_grace_period: 15s
     ports:
       - "127.0.0.1:8787:8787"
     env_file:
@@ -25,6 +36,11 @@ services:
     volumes:
       - youlin-data:/data
     # 镜像内置 healthcheck（GET /healthz），无需重复声明
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   youlin-data:

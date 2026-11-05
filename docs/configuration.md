@@ -163,7 +163,7 @@
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
 | `security.sessionDays` | `30` | 会话有效期（天）。登录 Cookie 的有效期。 |
-| `security.loginRateLimit` | `5` | 登录限流（次/小时）。单 IP 每小时上限。 |
+| `security.loginRateLimit` | `5` | 登录限流（次/小时）。单 IP 一小时滑动窗口，记录在 SQLite，重启后仍生效。 |
 
 ### 通知（v1.1 预留）（`notify.*`）
 

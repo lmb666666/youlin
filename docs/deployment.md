@@ -20,7 +20,7 @@ docker compose up -d      # 默认拉取 ghcr.io/lmb666666/youlin:latest
 
 打开 `http://127.0.0.1:8787/admin` 登录。数据在命名卷 `youlin_youlin-data`（容器内 `/data/youlin.db`），首次启动自动建表，重启和升级都不丢数据。
 
-镜像同时提供 amd64 与 arm64，NAS、ARM 小主机也能跑。
+镜像同时提供 amd64 与 arm64，NAS、ARM 小主机也能跑。Compose 默认启用只读根文件系统、`cap_drop: ALL`、`no-new-privileges` 与 init；自行 `docker run` 时建议加上同样参数，只需要把 `/data` 挂成可写卷。
 
 想自己构建镜像：
 
@@ -44,12 +44,13 @@ Fork 项目后，自己的 Docker workflow 会把镜像推到 `ghcr.io/<你的�
 | `MIGRATIONS_DIR` | `migrations` | 迁移目录 |
 | `CRON_ENABLED` | `true` | 是否在进程内跑抓取轮转与自动备份 |
 | `CRON_INTERVAL_SECONDS` | `300` | 定时作业检查间隔，最小 30 秒 |
+| `LOG_LEVEL` | `info` | 日志级别：`silent` / `debug` / `info` / `warn` / `error`；输出为 JSON |
 | `TURNSTILE_SECRET` | 空 | 申请页人机验证；开启 `apply.turnstile` 时才需要 |
 | `WEBDAV_PASSWORD` | 空 | WebDAV 备份密码（地址与用户名在设置页） |
 | `GITHUB_PAT` | 空 | 触发接入方重建（`github_dispatch` 模式） |
 | `YOULIN_CONFIG_OVERRIDES` | 空 | JSON 配置覆盖，优先级高于设置页 |
 
-**单实例部署**：SQLite 是单写者，不要同时起多个副本挂同一个数据卷。
+**单实例部署**：SQLite 是单写者，不要同时起多个副本挂同一个数据卷。调度器另有数据库锁兜底——误起多个实例时同一轮只会有一个实例执行抓取/备份，但共享 SQLite 仍不是多副本方案。
 
 ## 3. HTTPS 与反向代理
 

@@ -11,7 +11,7 @@ export function loginRoutes() {
   app.post('/api/admin/login', async (c) => {
     const cfg = c.get('cfg')
     const ip = clientIp(c)
-    if (!loginAllowed(ip, cfg.security.loginRateLimit)) {
+    if (!loginAllowed(c.env.DB, ip, cfg.security.loginRateLimit)) {
       return jsonError(429, 'rate_limited', '尝试过于频繁，请一小时后再试')
     }
 
@@ -25,7 +25,7 @@ export function loginRoutes() {
       return jsonError(401, 'bad_token', '口令不正确')
     }
 
-    resetLoginHits(ip)
+    resetLoginHits(c.env.DB, ip)
     const days = cfg.security.sessionDays
     const session = await signSession(c.env.ADMIN_TOKEN, days)
     setCookie(c, SESSION_COOKIE, session, cookieOptions(c, days * 86_400))

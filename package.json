@@ -13,7 +13,7 @@
     "dev": "tsx watch src/server/main.ts",
     "dev:web": "pnpm --filter youlin-web dev",
     "build": "pnpm --filter youlin-web build",
-    "build:server": "esbuild src/server/main.ts --bundle --platform=node --format=esm --target=node24 --external:better-sqlite3 --external:undici --outfile=server/dist/main.mjs",
+    "build:server": "esbuild src/server/main.ts --bundle --platform=node --format=esm --target=node24 --external:better-sqlite3 --external:undici --external:pino --outfile=server/dist/main.mjs",
     "start": "node server/dist/main.mjs",
     "lint": "eslint .",
     "docs:config": "node scripts/gen-config-docs.mjs",
@@ -28,6 +28,7 @@
     "drizzle-orm": "^0.45.4",
     "fast-xml-parser": "^5.11.2",
     "hono": "^4.13.13",
+    "pino": "^10.4.0",
     "undici": "^7.30.1",
     "zod": "^4.6.7"
   },

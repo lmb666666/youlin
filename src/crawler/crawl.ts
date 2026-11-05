@@ -5,6 +5,7 @@ import { checkFriendHealth, persistHealth, refreshBacklink } from './linkcheck'
 import { dbTime, daysSince } from '../util/time'
 import { clampText } from '../util/str'
 import { runPool } from '../util/pool'
+import { logger } from '../log'
 import {
   deleteOldArticles,
   ensureStateRow,
@@ -53,7 +54,7 @@ export async function runCronTick(db: Env['DB'], env: Env, cfg: AppConfig): Prom
     try {
       summary[await crawlSource(db, env, cfg, friend)]++
     } catch (e) {
-      console.error(`[crawl] friend ${friend.id} unhandled:`, e)
+      logger.error({ err: e, friendId: friend.id }, 'cron crawl source failed')
       summary.failed++
     }
   }
@@ -114,7 +115,7 @@ async function runRound(
       try {
         await task(friend)
       } catch (e) {
-        console.error(`[${kind}] friend ${friend.id} unhandled:`, e)
+        logger.error({ err: e, kind, friendId: friend.id }, 'manual round source failed')
       }
       done++
       if (done === sources.length || done % step === 0) {

@@ -2,12 +2,13 @@ import type { Env, AppConfig } from '../types'
 import { CONFIG_FIELDS, CONFIG_TOP_KEYS } from './definition'
 import { fieldSchemas, toNested, type FlatSettings } from './schema'
 import { listSettings } from '../repositories/settings'
+import { logger } from '../log'
 
 /**
  * 配置三层合并（DESIGN §9）：
  *   代码默认值 ← SQLite settings 表 ← 环境变量 YOULIN_CONFIG_OVERRIDES
  *
- * 任何一层损坏（坏 JSON / 非法值）都不阻断运行：按键丢弃并 console.warn，
+ * 任何一层损坏（坏 JSON / 非法值）都不阻断运行：按键丢弃并记录 warning，
  * 该键回退到下一层。返回扁平合并结果 + 嵌套视图。
  */
 
@@ -23,11 +24,11 @@ function parseFlatJson(text: string | undefined, source: string): FlatSettings {
   try {
     raw = JSON.parse(text)
   } catch {
-    console.warn(`[config] ${source} 不是合法 JSON，已忽略`)
+    logger.warn({ source }, 'config source is not valid JSON, ignored')
     return {}
   }
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-    console.warn(`[config] ${source} 应为 JSON 对象，已忽略`)
+    logger.warn({ source }, 'config source is not a JSON object, ignored')
     return {}
   }
   return raw as FlatSettings
@@ -47,7 +48,7 @@ function sanitize(flat: FlatSettings, source: string): FlatSettings {
     if (r.success) out[k] = r.data
     else bad.push(k)
   }
-  if (bad.length > 0) console.warn(`[config] ${source} 非法/未知配置键已回退默认值：${bad.join(', ')}`)
+  if (bad.length > 0) logger.warn({ source, keys: bad }, 'invalid/unknown config keys fall back to defaults')
   return out
 }
 
@@ -81,7 +82,7 @@ export async function loadFlatSettings(db: Env['DB'], env: Env): Promise<FlatSet
     try {
       stored[row.key] = JSON.parse(row.value)
     } catch {
-      console.warn(`[config] settings 表键 ${row.key} 值不是合法 JSON，已忽略`)
+      logger.warn({ key: row.key }, 'settings value is not valid JSON, ignored')
     }
   }
   merged = { ...merged, ...sanitize(stored, 'settings 表') }

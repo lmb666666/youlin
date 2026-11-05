@@ -1,6 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { getCookie } from 'hono/cookie'
-import type { AppEnv } from './types'
+import type { AppEnv, Db } from './types'
+import { consumeLoginAttempt, resetLoginAttempts } from './repositories/login-rate-limit'
 
 /**
  * 登录会话（DESIGN §5）：
@@ -87,29 +88,14 @@ export function cookieOptions(c: Context, maxAgeSeconds: number) {
 }
 
 // ── 登录限流（security.loginRateLimit 次/小时，按 IP）──────────────────────
-// v1 用 isolate 内存滑动窗：免费版多 isolate 时各算各的，放宽而非收紧，可接受（见 DECISIONS）。
-const loginHits = new Map<string, number[]>()
+// 记录在 SQLite 的 login_attempts 表：跨进程、跨重启生效，一小时滑动窗口。
 
-export function loginAllowed(ip: string, limitPerHour: number, now = Date.now()): boolean {
-  const windowStart = now - 3_600_000
-  const hits = (loginHits.get(ip) ?? []).filter((t) => t > windowStart)
-  if (hits.length >= limitPerHour) {
-    loginHits.set(ip, hits)
-    return false
-  }
-  hits.push(now)
-  loginHits.set(ip, hits)
-  // 防止 Map 无限增长
-  if (loginHits.size > 1000) {
-    for (const [k, v] of loginHits) {
-      if (v.every((t) => t <= windowStart)) loginHits.delete(k)
-    }
-  }
-  return true
+export function loginAllowed(db: Db, ip: string, limitPerHour: number, now = Date.now()): boolean {
+  return consumeLoginAttempt(db, ip, limitPerHour, now)
 }
 
-export function resetLoginHits(ip: string): void {
-  loginHits.delete(ip)
+export function resetLoginHits(db: Db, ip: string): void {
+  resetLoginAttempts(db, ip)
 }
 
 // ── 中间件 ────────────────────────────────────────────────────────────────
