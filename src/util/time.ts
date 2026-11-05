@@ -1,5 +1,7 @@
 /** 时间工具：库内 datetime('now') 存的是 "YYYY-MM-DD HH:MM:SS"（UTC），输出一律 ISO 8601 UTC */
 
+import { isRealYMD } from '@youlin/contracts'
+
 // 库内时间可能是 datetime('now') 的空格格式，也可能是测试/旧数据里的 T 分隔无 Z 格式；
 // 两者都按 UTC 解释，避免 Node 在非 UTC 时区把它当成本地时间。
 const DB_TS = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/
@@ -12,17 +14,6 @@ export function isoUtc(value: string | null | undefined): string | undefined {
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value)) return value
   const d = new Date(value)
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString().replace(/\.\d{3}Z$/, 'Z')
-}
-
-/** 校验 YYYY-MM-DD 是真实存在的日历日（拒绝 2024-02-30 / 2024-13-01） */
-export function isRealYMD(value: string): boolean {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
-  if (!m) return false
-  const year = Number(m[1])
-  const month = Number(m[2])
-  const day = Number(m[3])
-  const d = new Date(Date.UTC(year, month - 1, day))
-  return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day
 }
 
 /** 任意时间 → YYYY-MM-DD（UTC） */

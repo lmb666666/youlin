@@ -3,6 +3,7 @@ import { dateOnly } from '../util/time'
 import { httpUrl } from '../util/validate'
 import { importFriends, type ImportFriendInput } from '../repositories/import'
 import type { Db } from '../types'
+import type { ImportResult } from '@youlin/contracts'
 
 /**
  * 数据导入（DESIGN §5 POST /api/admin/import）
@@ -148,13 +149,7 @@ function collectItems(body: unknown): { raw: unknown[]; groupOf: (i: number) => 
   return { raw: [], groupOf: () => null }
 }
 
-export function importData(db: Db, body: unknown): {
-  imported: number
-  updated: number
-  skipped: number
-  groupsCreated: number
-  errors: ImportError[]
-} {
+export function importData(db: Db, body: unknown): ImportResult {
   const { raw, groupOf } = collectItems(body)
   if (raw.length === 0) throw new AppError(400, 'empty_input', '未识别到可导入条目')
 

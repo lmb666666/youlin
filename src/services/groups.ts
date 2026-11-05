@@ -1,5 +1,5 @@
-import { z } from 'zod'
 import { AppError } from '../errors'
+import { groupCreateSchema, groupReorderSchema, groupUpdateSchema, type Group } from '@youlin/contracts'
 import { parseInput } from './validation'
 import { isUniqueConstraintError } from '../util/http'
 import {
@@ -13,25 +13,7 @@ import {
 } from '../repositories/groups'
 import type { Db } from '../types'
 
-export const groupCreateSchema = z.object({
-  name: z.string().min(1).max(100),
-  desc: z.string().max(2000).optional().nullable(),
-  sort: z.number().int().optional(),
-})
-export const groupUpdateSchema = groupCreateSchema.partial()
-export const groupReorderSchema = z.object({
-  items: z.array(z.object({ id: z.number().int(), sort: z.number().int() })).min(1),
-})
-
-export interface GroupView {
-  id: number
-  name: string
-  desc?: string
-  sort: number
-  friendCount: number
-}
-
-export function listGroupViews(db: Db): GroupView[] {
+export function listGroupViews(db: Db): Group[] {
   return listGroups(db).map((g) => ({
     id: g.id,
     name: g.name,

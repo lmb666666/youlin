@@ -1,9 +1,8 @@
-import { z } from 'zod'
 import { AppError } from '../errors'
+import { friendCreateSchema, friendPatchSchema, friendReorderSchema, type Friend } from '@youlin/contracts'
 import { parseInput } from './validation'
 import { maybeAutoRebuild } from './rebuild'
 import { isUniqueConstraintError } from '../util/http'
-import { httpUrl, dateYMD } from '../util/validate'
 import { isoUtc } from '../util/time'
 import { findGroupById } from '../repositories/groups'
 import {
@@ -18,38 +17,7 @@ import {
 } from '../repositories/friends'
 import type { AppConfig, Db, Env } from '../types'
 
-export const friendCreateSchema = z.object({
-  groupId: z.number().int().positive(),
-  // 站点名必填；作者选填，缺省时后端用站点名兜底（保持 author 列 NOT NULL 与公开契约不变）
-  title: z.string().min(1).max(200),
-  author: z.string().max(200).optional().nullable(),
-  nickname: z.string().max(200).optional().nullable(),
-  desc: z.string().max(2000).optional().nullable(),
-  link: httpUrl,
-  feed: httpUrl.optional().nullable(),
-  icon: httpUrl.optional().nullable(),
-  avatar: httpUrl.optional().nullable(),
-  archs: z.array(z.string().max(100)).max(20).optional(),
-  since: dateYMD,
-  comment: z.string().max(2000).optional().nullable(),
-  inCircle: z.boolean().optional(),
-  status: z.enum(['active', 'hidden']).optional(),
-  sort: z.number().int().optional(),
-})
-
-export const friendPatchSchema = friendCreateSchema.partial().extend({
-  // 这四列 NOT NULL，不接受 null（author 的空串由兜底逻辑转换）
-  groupId: z.number().int().positive().optional(),
-  author: z.string().max(200).optional(),
-  link: httpUrl.optional(),
-  since: dateYMD.optional(),
-})
-
-export const friendReorderSchema = z.object({
-  items: z.array(z.object({ id: z.number().int(), sort: z.number().int(), groupId: z.number().int().optional() })).min(1),
-})
-
-export function listFriendViews(db: Db) {
+export function listFriendViews(db: Db): Friend[] {
   return listFriends(db).map((f) => ({
     id: f.id,
     groupId: f.groupId,
@@ -66,7 +34,7 @@ export function listFriendViews(db: Db) {
     since: f.since,
     comment: f.comment ?? undefined,
     inCircle: f.inCircle,
-    status: f.status,
+    status: f.status === 'hidden' ? 'hidden' : 'active',
     sort: f.sort,
     createdAt: isoUtc(f.createdAt),
     updatedAt: isoUtc(f.updatedAt),

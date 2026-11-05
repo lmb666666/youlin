@@ -3,38 +3,13 @@ import { listPublicGroups } from '../repositories/links'
 import { circleStats, listCircleArticles } from '../repositories/articles'
 import type { FriendRow, SourceStateRow } from '../server/schema'
 import type { AppConfig, Db } from '../types'
+import type { CircleResponse, LinkOutput, PublicLinksResponse } from '@youlin/contracts'
 
 /**
  * 公开接口数据（DESIGN §4.1/§4.2）：
  *   /api/links  分组 + 友链 + 体检摘要
  *   /api/circle stats + 文章（统计口径基于参与朋友圈的全集，不随 limit 变化）
  */
-
-export interface LinkOutput {
-  author: string
-  title?: string
-  desc?: string
-  link: string
-  feed?: string
-  icon?: string
-  avatar?: string
-  archs?: string[]
-  since: string
-  comment?: string
-  health?: {
-    reachable?: boolean
-    crawlable?: boolean
-    /** true/false；null=未检测 */
-    backlink: boolean | null
-    /** 秒；不可达为 -1 */
-    latency?: number
-    lastPostAt?: string
-    staleDays?: number
-    /** 失联天数；正常 null */
-    unreachableDays?: number | null
-    checkedAt: string
-  }
-}
 
 export function buildLink(f: FriendRow, s: SourceStateRow | null): LinkOutput {
   const out: LinkOutput = { author: f.author, link: f.link, since: f.since }
@@ -68,7 +43,7 @@ export function buildLink(f: FriendRow, s: SourceStateRow | null): LinkOutput {
   return out
 }
 
-export function publicLinks(db: Db, cfg: AppConfig, group?: string) {
+export function publicLinks(db: Db, cfg: AppConfig, group?: string): PublicLinksResponse {
   return {
     groups: listPublicGroups(db, cfg.api.includeHidden, group).map((g) => {
       const out: { name: string; desc?: string; links: LinkOutput[] } = { name: g.name, links: [] }
@@ -79,7 +54,7 @@ export function publicLinks(db: Db, cfg: AppConfig, group?: string) {
   }
 }
 
-export function publicCircle(db: Db, cfg: AppConfig, limitQuery?: string) {
+export function publicCircle(db: Db, cfg: AppConfig, limitQuery?: string): CircleResponse {
   const stats = circleStats(db)
 
   const requested = Number(limitQuery)

@@ -9,6 +9,7 @@ import { readBackupStatus, recordBackupStatus } from '../backup/status'
 import { runWebdavBackup } from '../backup/run'
 import { BACKUP_FILE_PATTERN, WebDavError, redactWebdavUrl, webdavClientFor, webdavReady } from '../backup/webdav'
 import type { AppConfig, Db, Env } from '../types'
+import type { BackupPreview } from '@youlin/contracts'
 
 /** 未配 WebDAV 时，恢复凭证的有效期（export 时签发，防「从未备份就恢复」） */
 const PREBACKUP_WINDOW_MS = 3_600_000
@@ -22,20 +23,6 @@ export interface BackupArchive {
 export interface RestoreResult {
   summary: RestoreSummary
   preRestoreFile: string | null
-}
-
-export interface BackupPreview {
-  version: number
-  exportedAt: string
-  appVersion: string | null
-  counts: {
-    groups: number
-    friends: number
-    applications: number
-    articles: number
-    settings: number
-  }
-  includeArticles: boolean
 }
 
 function webdavError(err: unknown): never {

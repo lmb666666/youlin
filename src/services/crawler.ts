@@ -15,15 +15,9 @@ import {
   listHealthSources,
 } from '../repositories/crawl'
 import type { AppConfig, Db, Env } from '../types'
+import type { ArticleListResponse, CrawlStatus, HealthListResponse, ProbeResult } from '@youlin/contracts'
 
-export interface ProbeResult {
-  feed?: string
-  title?: string
-  icon?: string
-  avatar?: string
-}
-
-export function listHealthView(db: Db) {
+export function listHealthView(db: Db): HealthListResponse {
   return {
     friends: listHealthSources(db).map(({ friend: f, state: s }) => ({
       id: f.id,
@@ -32,14 +26,14 @@ export function listHealthView(db: Db) {
       link: f.link,
       feed: f.feed ?? undefined,
       inCircle: f.inCircle === 1,
-      status: f.status,
+      status: f.status === 'hidden' ? 'hidden' : 'active',
       state:
         s?.checkedAt == null
           ? null
           : {
               reachable: s.reachable == null ? null : s.reachable === 1,
               crawlable: s.crawlable == null ? null : s.crawlable === 1,
-              bestMethod: s.bestMethod ?? null,
+              bestMethod: s.bestMethod === 'rss' || s.bestMethod === 'homepage' || s.bestMethod === 'api' || s.bestMethod === 'none' ? s.bestMethod : null,
               httpStatus: s.httpStatus ?? null,
               latencyMs: s.latencyMs ?? null,
               finalUrl: s.finalUrl ?? null,
@@ -59,7 +53,7 @@ export function listHealthView(db: Db) {
   }
 }
 
-export function listArticlesView(db: Db, friendId?: number) {
+export function listArticlesView(db: Db, friendId?: number): ArticleListResponse {
   return {
     articles: listAdminArticles(db, friendId).map((r) => ({
       id: r.id,
@@ -78,7 +72,7 @@ export function deleteArticle(db: Db, id: number): void {
   removeArticle(db, id)
 }
 
-export async function crawlStatus(db: Db) {
+export async function crawlStatus(db: Db): Promise<CrawlStatus> {
   const round = await readRoundState(db)
   const { running, stale } = roundStatus(round)
   return {

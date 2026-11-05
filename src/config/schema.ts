@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { CONFIG_FIELDS, CONFIG_GROUPS, CONFIG_VERSION, type ConfigField, type ConfigGroup } from './definition'
 import { httpUrl } from '../util/validate'
+import type { SettingsSchemaResponse } from '@youlin/contracts'
 
 /**
  * 由 CONFIG_FIELDS 派生：
@@ -105,7 +106,7 @@ function toSchemaField(f: ConfigField): SettingsSchemaField {
   return out
 }
 
-export function settingsSchemaPayload(): { version: number; groups: SettingsSchemaGroup[] } {
+export function settingsSchemaPayload(): SettingsSchemaResponse {
   const groups: SettingsSchemaGroup[] = CONFIG_GROUPS.map((g: ConfigGroup) => ({
     key: g.key,
     label: g.label,

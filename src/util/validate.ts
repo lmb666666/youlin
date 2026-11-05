@@ -1,23 +1,2 @@
-import { z } from 'zod'
-import { isRealYMD } from './time'
-
-/** http(s) URL */
-export const httpUrl = z
-  .string()
-  .max(2048)
-  .refine(
-    (v) => {
-      try {
-        const u = new URL(v)
-        return u.protocol === 'http:' || u.protocol === 'https:'
-      } catch {
-        return false
-      }
-    },
-    { message: '链接需以 http:// 或 https:// 开头' },
-  )
-
-export const dateYMD = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式须为 YYYY-MM-DD')
-  .refine(isRealYMD, '日期不存在')
+/** 输入校验的单一来源：服务端与前端共用 @youlin/contracts 中的 schema */
+export { httpUrl, dateYMD, isRealYMD } from '@youlin/contracts'

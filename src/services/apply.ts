@@ -1,11 +1,10 @@
-import { z } from 'zod'
 import { AppError } from '../errors'
+import { applyFormSchema, type ApplyResult, type BacklinkVerdict } from '@youlin/contracts'
 import { fieldDetails, isUniqueConstraintError } from '../util/http'
 import { clampText } from '../util/str'
 import { fetchRemote } from '../crawler/http'
 import { htmlContainsBacklink, normalizeDomain } from '../crawler/linkcheck'
 import { dateOnly, dbTime } from '../util/time'
-import { httpUrl } from '../util/validate'
 import { linkVariants } from '../util/link'
 import { ensureGroupByName } from '../repositories/groups'
 import {
@@ -25,41 +24,12 @@ import type { AppConfig, Db, Env } from '../types'
  * 所有拒绝都以 AppError 抛出，HTTP 状态与错误码由统一映射保持稳定。
  */
 
-const optionalUrl = z.union([httpUrl, z.literal('')]).optional().nullable()
-const optionalText = (max: number) => z.union([z.string().max(max), z.literal('')]).optional().nullable()
-
-export const applySchema = z
-  .object({
-    siteName: optionalText(100),
-    // link 容忍缺省/空串：必填与格式提示都走下方中文校验，避免英文 zod 报错泄漏到页面
-    link: z.preprocess((v) => (v === '' ? undefined : v), httpUrl.optional()),
-    author: optionalText(100),
-    avatar: optionalUrl,
-    feed: optionalUrl,
-    desc: optionalText(2000),
-    contact: optionalText(200),
-    note: optionalText(2000),
-    turnstileToken: z.string().max(4000).optional().nullable(),
-  })
-  .strict()
-
 const KNOWN_FIELDS = ['siteName', 'link', 'author', 'avatar', 'feed', 'desc', 'contact', 'note']
 
 /** 字段中文名（校验提示用） */
 const FIELD_LABELS: Record<string, string> = {
   siteName: '站点名', link: '站点链接', author: '站长昵称', avatar: '头像链接',
   feed: 'RSS 订阅地址', desc: '站点简介', contact: '联系方式', note: '备注',
-}
-
-export interface BacklinkVerdict {
-  ok: boolean | null
-  detail: string | null
-}
-
-export interface ApplyResult {
-  id: number
-  status: 'pending' | 'approved'
-  backlink: BacklinkVerdict
 }
 
 function nonEmpty(v: unknown): boolean {
@@ -112,7 +82,7 @@ export async function submitApplication(
 ): Promise<ApplyResult> {
   if (!cfg.apply.enabled) throw new AppError(403, 'apply_disabled', '友链申请通道未开放')
 
-  const parsed = applySchema.safeParse(raw)
+  const parsed = applyFormSchema.safeParse(raw)
   if (!parsed.success) {
     throw new AppError(400, 'validation_failed', '请检查表单填写', fieldDetails(parsed.error.issues))
   }

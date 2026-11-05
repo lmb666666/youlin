@@ -67,6 +67,7 @@ src/            Node 服务（路由 / 业务 / 抓取 / 体检 / 配置 / 鉴�
   crawler/      RSS 解析、feed 发现、轮转抓取、体检
   backup/       导出、恢复、WebDAV
   server/       HTTP、SQLite、静态资源、调度
+packages/contracts/ 服务端与前端共用的 zod schema / 类型
 web/            管理台 SPA（React + Vite + Tailwind + shadcn/ui）
 schemas/        对外接口的 JSON Schema 与示例（契约冻结在此）
 migrations/     SQLite 迁移（只增不改）

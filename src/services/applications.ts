@@ -1,7 +1,6 @@
-import { z } from 'zod'
 import { AppError } from '../errors'
+import { applicationApproveSchema, applicationRejectSchema, manualRebuildSchema, type Application } from '@youlin/contracts'
 import { isoUtc, dateOnly, dbTime } from '../util/time'
-import { dateYMD, httpUrl } from '../util/validate'
 import { linkVariants } from '../util/link'
 import { triggerRebuild, type RebuildResult } from '../rebuild'
 import { ensureGroupByName, findGroupById } from '../repositories/groups'
@@ -19,25 +18,7 @@ import type { AppConfig, Db, Env } from '../types'
 export const applicationStatuses = ['pending', 'approved', 'rejected', 'all'] as const
 export type ApplicationStatus = (typeof applicationStatuses)[number]
 
-export const approveApplicationSchema = z
-  .object({
-    groupId: z.number().int().positive().optional(),
-    // 可编辑后再入库（DESIGN §7：字段自动填充，可编辑）
-    author: z.string().max(100).optional(),
-    title: z.string().max(200).optional(),
-    desc: z.string().max(2000).optional(),
-    // 与 friends 表单同一校验口径（httpUrl），放行 javascript: 等任意 scheme 会流入公开接口
-    feed: z.union([httpUrl, z.literal('')]).optional(),
-    avatar: z.union([httpUrl, z.literal('')]).optional(),
-    since: dateYMD.optional(),
-    rebuild: z.boolean().optional(),
-  })
-  .strict()
-
-export const rejectApplicationSchema = z.object({ reason: z.string().max(2000).optional() }).strict()
-export const manualRebuildSchema = z.object({ reason: z.string().max(200).optional() }).strict()
-
-function shape(r: ApplicationRow) {
+function shape(r: ApplicationRow): Application {
   return {
     id: r.id,
     siteName: r.siteName,
@@ -53,14 +34,14 @@ function shape(r: ApplicationRow) {
       checkedAt: isoUtc(r.backlinkCheckedAt) ?? null,
       detail: r.backlinkDetail ?? null,
     },
-    status: r.status,
+    status: r.status === 'approved' || r.status === 'rejected' ? r.status : 'pending',
     reviewNote: r.reviewNote ?? undefined,
     createdAt: isoUtc(r.createdAt),
     reviewedAt: isoUtc(r.reviewedAt) ?? undefined,
   }
 }
 
-export function listApplicationViews(db: Db, status: string): ReturnType<typeof shape>[] {
+export function listApplicationViews(db: Db, status: string): Application[] {
   if (!applicationStatuses.includes(status as ApplicationStatus)) {
     throw new AppError(400, 'invalid_status', `status 须为 ${applicationStatuses.join(' / ')}`)
   }
@@ -74,7 +55,7 @@ export async function approveApplication(
   id: number,
   raw: unknown,
 ): Promise<{ friendId: number; rebuild: RebuildResult | null }> {
-  const parsed = approveApplicationSchema.safeParse(raw ?? {})
+  const parsed = applicationApproveSchema.safeParse(raw ?? {})
   if (!parsed.success) throw new AppError(400, 'validation_failed', '字段校验失败')
   const overrides = parsed.data
 
@@ -120,7 +101,7 @@ export async function approveApplication(
 }
 
 export function rejectApplication(db: Db, id: number, raw: unknown): void {
-  const parsed = rejectApplicationSchema.safeParse(raw ?? {})
+  const parsed = applicationRejectSchema.safeParse(raw ?? {})
   if (!parsed.success) throw new AppError(400, 'validation_failed', '字段校验失败')
 
   const application = findApplicationById(db, id)

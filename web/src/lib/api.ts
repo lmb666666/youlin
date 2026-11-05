@@ -11,6 +11,16 @@ export class ApiError extends Error {
   }
 }
 
+/** 非 JSON 请求（文件上传/下载）失败时提取服务端错误文案 */
+export async function readError(res: Response): Promise<string> {
+  let message = `请求失败（${res.status}）`
+  try {
+    const body = (await res.json()) as { error?: { message?: string } }
+    if (body.error?.message) message = body.error.message
+  } catch { /* 保持默认文案 */ }
+  return message
+}
+
 export async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -33,145 +43,30 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}): Pr
   return body as T
 }
 
-// ── 类型（与管理 API 输出一致）───────────────────────────────────────────
-
-export interface Group {
-  id: number
-  name: string
-  desc?: string
-  sort: number
-  friendCount: number
-}
-
-export interface FriendState {
-  reachable: boolean | null
-  crawlable: boolean | null
-  failCount: number
-  checkedAt?: string
-}
-
-export interface SourceState {
-  reachable: boolean | null
-  crawlable: boolean | null
-  bestMethod: 'rss' | 'homepage' | 'api' | 'none' | null
-  httpStatus: number | null
-  latencyMs: number | null
-  finalUrl: string | null
-  backlinkChecked: boolean
-  backlink: boolean | null
-  unreachableSince: string | null
-  rssUnavailableSince: string | null
-  lastPostPublished: string | null
-  lastPostDaysAgo: number | null
-  lastOkAt: string | null
-  lastError: string | null
-  failCount: number
-  nextCheckAt: string | null
-  checkedAt: string | null
-}
-
-export interface HealthFriend {
-  id: number
-  author: string
-  title?: string
-  link: string
-  feed?: string
-  inCircle: boolean
-  status: 'active' | 'hidden'
-  state: SourceState | null
-}
-
-export interface ArticleRow {
-  id: number
-  friendId: number
-  friendAuthor: string
-  title: string
-  link: string
-  author?: string
-  publishedAt?: string
-  fetchedAt?: string
-}
-
-export interface CrawlStatus {
-  running: boolean
-  /** 上次轮转超过最长存活时间仍未结束（进程被杀/部署中断） */
-  stale: boolean
-  round: { kind: string; startedAt: string; done: number; total: number; finishedAt?: string } | null
-  activeCount: number
-  dueCount: number
-}
-
-export interface Friend {
-  id: number
-  groupId: number
-  groupName?: string
-  author: string
-  nickname?: string
-  title?: string
-  desc?: string
-  link: string
-  feed?: string
-  icon?: string
-  avatar?: string
-  archs?: string[]
-  since: string
-  comment?: string
-  inCircle: boolean
-  status: 'active' | 'hidden'
-  sort: number
-  createdAt?: string
-  updatedAt?: string
-  state?: FriendState | null
-}
-
-export interface SettingsSchemaField {
-  key: string
-  type: 'string' | 'text' | 'number' | 'boolean' | 'enum' | 'stringList' | 'json'
-  default: unknown
-  label: string
-  description: string
-  options?: string[]
-  min?: number
-  max?: number
-  placeholder?: string
-  full?: boolean
-}
-
-export interface SettingsSchemaGroup {
-  key: string
-  label: string
-  description: string
-  fields: SettingsSchemaField[]
-}
-
-export interface Application {
-  id: number
-  siteName: string
-  author?: string
-  link: string
-  avatar?: string
-  feed?: string
-  desc?: string
-  contact?: string
-  note?: string
-  backlink: { ok: boolean | null; checkedAt: string | null; detail: string | null }
-  status: 'pending' | 'approved' | 'rejected'
-  reviewNote?: string
-  createdAt?: string
-  reviewedAt?: string
-}
-
-export interface AdminStats {
-  friends: { active: number; hidden: number; unreachable: number }
-  circle: { sources: number; due: number }
-  articles: { total: number; lastArticleAt: string | null }
-  applications: { pending: number; total: number }
-}
-
-export interface ImportResult {
-  imported: number
-  updated: number
-  skipped: number
-  groupsCreated: number
-  errors: { index: number; message: string }[]
-}
+// ── 类型：服务端与前端共用 @youlin/contracts ─────────────────────────────
+export type {
+  Group,
+  GroupListResponse,
+  Friend,
+  FriendState,
+  FriendListResponse,
+  FriendCreateInput,
+  FriendPatchInput,
+  SourceState,
+  HealthFriend,
+  HealthListResponse,
+  ArticleRow,
+  ArticleListResponse,
+  CrawlStatus,
+  Application,
+  ApplicationListResponse,
+  ApplicationApproveInput,
+  ApplicationRejectInput,
+  SettingsSchemaField,
+  SettingsSchemaGroup,
+  SettingsSchemaResponse,
+  SettingsValues,
+  SettingsResponse,
+  AdminStats,
+  ImportResult,
+} from '@youlin/contracts'
