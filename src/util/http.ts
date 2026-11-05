@@ -28,12 +28,43 @@ export function isUniqueConstraintError(e: unknown): boolean {
 
 /** 解析请求体 JSON；失败返回 undefined（需要直接写响应的场景用） */
 export async function readJson(c: Context): Promise<unknown | undefined> {
+  const maxBytes = 16 * 1024 * 1024
   const declared = Number(c.req.header('content-length') ?? '')
-  if (Number.isFinite(declared) && declared > 16 * 1024 * 1024) {
+  if (Number.isFinite(declared) && declared > maxBytes) {
     throw new AppError(413, 'payload_too_large', '请求体超过 16 MB 上限')
   }
+
+  const body = c.req.raw.body
+  if (!body) return undefined
+  const reader = body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
   try {
-    return await c.req.json()
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {})
+        throw new AppError(413, 'payload_too_large', '请求体超过 16 MB 上限')
+      }
+      chunks.push(value)
+    }
+  } catch (e) {
+    if (e instanceof AppError) throw e
+    return undefined
+  } finally {
+    reader.releaseLock()
+  }
+
+  try {
+    const bytes = new Uint8Array(total)
+    let offset = 0
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return JSON.parse(new TextDecoder().decode(bytes)) as unknown
   } catch {
     return undefined
   }
