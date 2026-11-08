@@ -25,6 +25,7 @@ export function buildLink(f: FriendRow, s: SourceStateRow | null): LinkOutput {
     const health: Omit<NonNullable<LinkOutput['health']>, 'checkedAt'> = {
       // checked=1 但值为 NULL（页面不可达/非 2xx）= 未检测到，不是“确定无反链”
       backlink: s.backlinkChecked ? (s.backlink === null ? null : s.backlink === 1) : null,
+      unreachableDays: null,
     }
     if (s.reachable !== null) health.reachable = s.reachable === 1
     if (s.crawlable !== null) health.crawlable = s.crawlable === 1
