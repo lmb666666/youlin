@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://youlin.dev/schemas/api-apply.response.schema.json",
-  "title": "POST /apply 成功响应（接口三·提交申请，201）",
-  "description": "提交成功后返回申请编号、状态与反链检测结果。错误响应为 { error: { code, message, details? } }，错误码见 DESIGN §4.3。",
+  "title": "POST /apply 成功响应（201）",
+  "description": "提交成功后返回申请编号、状态与反链检测结果。错误响应为 { error: { code, message, details? } }。",
   "type": "object",
   "required": ["id", "status", "backlink"],
   "additionalProperties": false,

@@ -10,7 +10,7 @@ export const linkHealthSchema = z.object({
   lastPostAt: z.string().optional(),
   staleDays: z.number().int().optional(),
   /** 失联天数；正常 null */
-  unreachableDays: z.number().int().nullable().optional(),
+  unreachableDays: z.number().int().nullable(),
   checkedAt: z.string(),
 })
 
