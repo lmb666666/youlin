@@ -1,30 +1,36 @@
-import { Badge } from '@/components/ui/badge'
 import { ShieldCheck, ShieldQuestion } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { StatusBadge } from '@/components/common/status-badge'
 import type { Application } from '@/lib/api'
 
 export function BacklinkBadge({ app }: { app: Application }) {
-  const b = app.backlink
-  if (b.ok === true) {
+  const detail = app.backlink.detail ?? '尚未检测'
+  if (app.backlink.ok === true) {
     return (
-      <span title={b.detail ?? ''}>
-        <Badge variant="secondary">
-          <ShieldCheck /> 有反链
-        </Badge>
-      </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span><StatusBadge tone="success" icon={ShieldCheck}>有反链</StatusBadge></span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-72 text-xs">{detail}</TooltipContent>
+      </Tooltip>
     )
   }
-  if (b.ok === false) {
+  if (app.backlink.ok === false) {
     return (
-      <span title={b.detail ?? ''}>
-        <Badge variant="destructive">
-          <ShieldQuestion /> 无反链
-        </Badge>
-      </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span><StatusBadge tone="danger" icon={ShieldQuestion}>无反链</StatusBadge></span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-72 text-xs">{detail}</TooltipContent>
+      </Tooltip>
     )
   }
   return (
-    <span title={b.detail ?? '未检测'}>
-      <Badge variant="outline">未检测</Badge>
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span><StatusBadge tone="neutral">未检测</StatusBadge></span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-72 text-xs">{detail}</TooltipContent>
+    </Tooltip>
   )
 }

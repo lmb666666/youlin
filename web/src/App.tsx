@@ -9,12 +9,11 @@ const HealthPage = lazy(() => import('@/pages/health'))
 const ApplicationsPage = lazy(() => import('@/pages/applications'))
 const DashboardPage = lazy(() => import('@/pages/dashboard'))
 const IntegrationPage = lazy(() => import('@/pages/integration'))
-const ImportPage = lazy(() => import('@/pages/import'))
 const BackupPage = lazy(() => import('@/pages/backup'))
 const SettingsPage = lazy(() => import('@/pages/settings'))
 
 function PageFallback() {
-  return <div className="p-6 text-sm text-muted-foreground">加载中…</div>
+  return <div className="p-6 text-sm text-subtle">加载中…</div>
 }
 
 export default function App() {
@@ -22,6 +21,7 @@ export default function App() {
     <Suspense fallback={<PageFallback />}>
       <Routes>
         <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
+        <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/admin/login" element={<LoginPage />} />
         <Route element={<AdminLayout />}>
           <Route path="/admin/dashboard" element={<DashboardPage />} />
@@ -30,7 +30,7 @@ export default function App() {
           <Route path="/admin/circle" element={<CirclePage />} />
           <Route path="/admin/health" element={<HealthPage />} />
           <Route path="/admin/applications" element={<ApplicationsPage />} />
-          <Route path="/admin/import" element={<ImportPage />} />
+          <Route path="/admin/import" element={<Navigate to="/admin/links?import=1" replace />} />
           <Route path="/admin/backup" element={<BackupPage />} />
           <Route path="/admin/settings" element={<SettingsPage />} />
         </Route>

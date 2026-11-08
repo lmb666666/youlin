@@ -1,114 +1,109 @@
+import { Link } from 'react-router'
 import { CloudDownload, CloudUpload, PlugZap, RefreshCw } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import { Skeleton } from '@/components/ui/skeleton'
+import { StatusBadge } from '@/components/common/status-badge'
 import type { BackupStatusResponse, DavFile } from '@youlin/contracts'
 import type { DateTimeOptions } from '@/lib/format'
-import { fmtBackupName, fmtBytes } from './format'
+import { formatBytes } from '@/lib/format'
+import { fmtBackupName } from './format'
 
-export function WebdavCard(props: {
+export function WebdavCard({
+  status,
+  files,
+  loading,
+  error,
+  statusError,
+  pendingAction,
+  dtOpts,
+  onRetryStatus,
+  onTest,
+  onRun,
+  onRefresh,
+  onRestore,
+}: {
   status: BackupStatusResponse | undefined
   files: DavFile[] | undefined
+  loading: boolean
   error: string | null
   statusError: string | null
-  onRetryStatus: () => void
-  busy: string | null
-  cloudTarget: string | null
+  pendingAction: string | null
   dtOpts: DateTimeOptions
+  onRetryStatus: () => void
   onTest: () => void
   onRun: () => void
   onRefresh: () => void
-  onCloudTargetChange: (name: string | null) => void
   onRestore: (name: string) => void
 }) {
-  const { status, files, error, statusError, onRetryStatus, busy, cloudTarget, dtOpts, onTest, onRun, onRefresh, onCloudTargetChange, onRestore } = props
   const configured = status?.webdav.configured ?? false
+  const busy = pendingAction !== null
+
   return (
-    <Card>
-      <CardHeader>
+    <Card className="gap-0 py-0">
+      <CardHeader className="border-b pb-4">
         <CardTitle className="flex items-center gap-2 text-base">
-          <CloudUpload className="size-4" /> WebDAV
+          <CloudUpload className="size-4 text-primary" /> WebDAV
         </CardTitle>
-        <CardDescription>地址、用户名与周期在设置页配置；密码写在 Secret（WEBDAV_PASSWORD）。</CardDescription>
+        <CardDescription>地址、用户名与周期在设置页配置；密码写在环境变量 WEBDAV_PASSWORD。</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3 text-sm">
+      <CardContent className="grid gap-3 pt-4 text-sm">
         {statusError ? (
-          <div className="grid gap-2">
-            <p className="text-muted-foreground">读取备份状态失败：{statusError}</p>
-            <Button variant="outline" size="sm" className="w-fit" onClick={onRetryStatus}>重试</Button>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-danger-border bg-danger-bg px-3 py-2 text-xs text-danger">
+            <span>读取备份状态失败：{statusError}</span>
+            <Button variant="ghost" size="sm" onClick={onRetryStatus}>重试</Button>
           </div>
         ) : !status ? (
-          <p className="text-muted-foreground">读取中…</p>
+          <Skeleton className="h-20 rounded-lg" />
         ) : configured ? (
           <>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">已配置</Badge>
-              <span className="break-all text-xs text-muted-foreground">{status.webdav.url}{status.webdav.path ? ` · ${status.webdav.path}` : ''}</span>
+              <StatusBadge tone="success">已配置</StatusBadge>
+              <span className="break-all font-mono text-[11px] text-muted-foreground">
+                {status.webdav.url}{status.webdav.path ? ` · ${status.webdav.path}` : ''}
+              </span>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={onTest} disabled={busy !== null}>
-                <PlugZap /> {busy === 'dav-test' ? '检测中…' : '测试连接'}
+              <Button variant="outline" size="sm" onClick={onTest} disabled={busy}>
+                <PlugZap /> {pendingAction === 'dav-test' ? '检测中…' : '测试连接'}
               </Button>
-              <Button onClick={onRun} disabled={busy !== null}>
-                <CloudUpload /> {busy === 'dav-run' ? '上传中…' : '立即备份到 WebDAV'}
+              <Button size="sm" onClick={onRun} disabled={busy}>
+                <CloudUpload /> {pendingAction === 'dav-run' ? '上传中…' : '立即备份到 WebDAV'}
               </Button>
-              <Button variant="ghost" onClick={onRefresh} disabled={busy !== null}>
-                <RefreshCw /> 刷新列表
+              <Button variant="ghost" size="sm" onClick={onRefresh} disabled={busy || loading}>
+                <RefreshCw className={loading ? 'animate-spin' : undefined} /> 刷新列表
               </Button>
             </div>
-            {error && <p className="text-xs text-destructive">{error}</p>}
-            {files && files.length > 0 && (
-              <div className="grid gap-1 rounded-md border p-2">
-                {files.map((f) => (
-                  <div key={f.name} className="flex flex-wrap items-center justify-between gap-2 rounded px-1 py-1 text-xs">
-                    <span className="min-w-0 truncate">{fmtBackupName(f.name, dtOpts)}</span>
-                    <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
-                      {fmtBytes(f.size)}
-                      <AlertDialog open={cloudTarget === f.name} onOpenChange={(o) => onCloudTargetChange(o ? f.name : null)}>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="outline" size="sm" disabled={busy !== null}>
-                            <CloudDownload /> 恢复
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>从这个云端备份恢复？</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              会先把当前数据自动存档一份到 WebDAV，再清空并写入 {fmtBackupName(f.name, dtOpts)}。
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
-                            <AlertDialogAction
-                              className="bg-destructive text-white hover:bg-destructive/90"
-                              onClick={() => onRestore(f.name)}
-                              disabled={busy !== null}
-                            >
-                              {busy === 'dav-restore' ? '恢复中…' : '确认恢复'}
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </span>
+            {error && <p className="text-xs text-danger">{error}</p>}
+
+            {loading && !files ? (
+              <Skeleton className="h-16 rounded-lg" />
+            ) : files && files.length > 0 ? (
+              <div className="divide-y rounded-lg border">
+                {files.map((file) => (
+                  <div key={file.name} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-xs">
+                    <div className="min-w-0">
+                      <p className="truncate">{fmtBackupName(file.name, dtOpts)}</p>
+                      <p className="mt-0.5 font-mono text-[10px] text-subtle">{file.name}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2 text-muted-foreground">
+                      <span>{formatBytes(file.size)}</span>
+                      <Button variant="outline" size="sm" disabled={busy} onClick={() => onRestore(file.name)}>
+                        <CloudDownload /> 恢复
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
+            ) : (
+              <p className="text-xs text-subtle">云端还没有备份文件。</p>
             )}
-            {files && files.length === 0 && <p className="text-xs text-muted-foreground">云端还没有备份文件。</p>}
           </>
         ) : (
-          <p className="text-muted-foreground">尚未配置。到设置页填写 WebDAV 地址与用户名，并设置 WEBDAV_PASSWORD。</p>
+          <div className="rounded-lg border bg-secondary/40 px-3 py-3 text-xs text-muted-foreground">
+            <p>尚未配置。到<Link to="/admin/settings?section=backup" className="mx-1 text-primary hover:underline">设置 → 备份</Link>填写 WebDAV 地址与用户名，并设置 WEBDAV_PASSWORD。</p>
+          </div>
         )}
-        <Separator className="my-1" />
-        <p className="text-xs text-muted-foreground">
-          自动备份与云端恢复在开启 WebDAV 后可用；同一目录保留最近 {status?.backup.retain ?? 7} 份，
-          恢复前存档保留 30 天，在下次 WebDAV 备份时清理。
-        </p>
       </CardContent>
     </Card>
   )

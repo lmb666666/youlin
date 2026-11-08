@@ -1,267 +1,307 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
 import { Hammer, Newspaper, Play, RefreshCw, Rss, Trash2 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { QueryError } from '@/components/query-error'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { api } from '@/lib/api'
-import { useArticlesQuery, useCrawlStatusQuery, useHealthQuery } from '@/lib/queries'
+import { ConfirmDialog } from '@/components/common/confirm-dialog'
+import { DataTable } from '@/components/common/data-table'
+import { EmptyState, ErrorState } from '@/components/common/page-state'
+import { PageHeader } from '@/components/common/page-header'
+import { Pagination } from '@/components/common/pagination'
+import { SegmentedControl } from '@/components/common/segmented-control'
+import { StatusBadge } from '@/components/common/status-badge'
+import { api, type ArticleRow } from '@/lib/api'
+import { useArticlesQuery, useHealthQuery } from '@/lib/queries'
 import { queryKeys } from '@/lib/query'
-import { useQueryErrorToast } from '@/lib/query-error'
+import { jobProgress, useJobStatus } from '@/lib/jobs'
 import { formatDateTime, settingsDateTimeOptions } from '@/lib/format'
 import { useSettings } from '@/lib/settings'
+import { useQueryParam } from '@/lib/url-state'
+
+const OUTCOME: Record<string, string> = {
+  ok: '成功',
+  notModified: '无更新（304）',
+  failed: '失败',
+  skipped: '跳过',
+}
 
 export default function CirclePage() {
   const settings = useSettings()
-  const fmt = (iso: string | null | undefined) => formatDateTime(iso, settingsDateTimeOptions(settings))
   const client = useQueryClient()
   const healthQuery = useHealthQuery()
-  const statusQuery = useCrawlStatusQuery()
   const articlesQuery = useArticlesQuery()
-  const [singleBusy, setSingleBusy] = useState<number | null>(null)
-  const [rebuildBusy, setRebuildBusy] = useState(false)
+  const jobQuery = useJobStatus()
+  const [filter, setFilter] = useQueryParam('filter', 'all')
+  const [pageParam, setPageParam] = useQueryParam('page', '1')
+  const [deleteArticle, setDeleteArticle] = useState<ArticleRow | null>(null)
+
+  const pageSize = Math.max(1, typeof settings['ui.pageSize'] === 'number' ? (settings['ui.pageSize'] as number) : 20)
+  const page = Math.max(1, Number.parseInt(pageParam, 10) || 1)
+  const fmt = (iso: string | null | undefined) => formatDateTime(iso, settingsDateTimeOptions(settings))
   const rebuildEnabled = settings['rebuild.enabled'] === true
 
-  useQueryErrorToast(healthQuery.error ?? statusQuery.error ?? articlesQuery.error)
-
-  const status = statusQuery.data
-  const wasRunning = useRef(false)
-  useEffect(() => {
-    // 轮询检测到本轮结束：刷新体检/文章列表（状态本身已由 query 更新）
-    if (wasRunning.current && status && !status.running) {
-      void client.invalidateQueries({ queryKey: queryKeys.health })
-      void client.invalidateQueries({ queryKey: queryKeys.articles })
-    }
-    wasRunning.current = Boolean(status?.running)
-  }, [status, client])
-
-  const crawlMutation = useMutation({
+  const crawl = useMutation({
     mutationFn: () => api<{ started: number }>('/api/admin/crawl', { method: 'POST' }),
-    onSuccess: (r) => {
-      toast.success(r.started > 0 ? `已开始抓取 ${r.started} 个源` : '没有待抓取的友链')
+    onSuccess: (result) => {
+      toast.success(result.started > 0 ? `已开始抓取 ${result.started} 个源` : '没有待抓取的友链')
       void client.invalidateQueries({ queryKey: queryKeys.crawlStatus })
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : '触发失败'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : '触发失败'),
   })
 
-  const rebuildMutation = useMutation({
+  const rebuild = useMutation({
     mutationFn: () =>
-      api<{ ok: boolean; provider: string }>('/api/admin/rebuild', {
+      api<{ provider: string }>('/api/admin/rebuild', {
         method: 'POST',
         body: JSON.stringify({ reason: 'manual' }),
       }),
-    onMutate: () => setRebuildBusy(true),
-    onSettled: () => setRebuildBusy(false),
-    onSuccess: (r) => toast.success(`已触发重建（${r.provider}）`),
-    onError: (err) => toast.error(err instanceof Error ? err.message : '触发失败'),
+    onSuccess: (result) => toast.success(`已触发重建（${result.provider}）`),
+    onError: (error) => toast.error(error instanceof Error ? error.message : '触发失败'),
   })
 
-  const crawlOneMutation = useMutation({
+  const crawlOne = useMutation({
     mutationFn: (id: number) => api<{ outcome: string }>(`/api/admin/crawl/${id}`, { method: 'POST' }),
-    onMutate: (id) => setSingleBusy(id),
-    onSettled: () => setSingleBusy(null),
-    onSuccess: (r) => {
-      const text = { ok: '成功', notModified: '无更新（304）', failed: '失败', skipped: '跳过' }[r.outcome] ?? r.outcome
-      toast.info(`抓取结果：${text}`)
+    onSuccess: (result) => {
+      toast.info(`抓取结果：${OUTCOME[result.outcome] ?? result.outcome}`)
       void client.invalidateQueries({ queryKey: queryKeys.health })
       void client.invalidateQueries({ queryKey: queryKeys.articles })
+      void client.invalidateQueries({ queryKey: queryKeys.stats })
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : '抓取失败'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : '抓取失败'),
   })
 
-  const deleteArticleMutation = useMutation({
+  const removeArticle = useMutation({
     mutationFn: (id: number) => api(`/api/admin/articles/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
+      setDeleteArticle(null)
       toast.success('文章已删除')
       void client.invalidateQueries({ queryKey: queryKeys.articles })
+      void client.invalidateQueries({ queryKey: queryKeys.stats })
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : '删除失败'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : '删除失败'),
   })
 
-  if (healthQuery.isError || statusQuery.isError || articlesQuery.isError) {
+  const firstError = healthQuery.error ?? articlesQuery.error
+  if (firstError && !healthQuery.data) {
     return (
-      <QueryError
-        message={(healthQuery.error ?? statusQuery.error ?? articlesQuery.error) instanceof Error
-          ? (healthQuery.error ?? statusQuery.error ?? articlesQuery.error)!.message
-          : '朋友圈数据加载失败'}
-        onRetry={() => { void healthQuery.refetch(); void statusQuery.refetch(); void articlesQuery.refetch() }}
-      />
+      <div className="grid min-w-0 gap-5">
+        <PageHeader title="朋友圈" description="抓取状态与最近文章。" />
+        <ErrorState
+          title="朋友圈数据加载失败"
+          error={firstError}
+          onRetry={() => {
+            void healthQuery.refetch()
+            void articlesQuery.refetch()
+          }}
+        />
+      </div>
     )
   }
 
-  if (healthQuery.isPending || statusQuery.isPending || articlesQuery.isPending) {
+  if (healthQuery.isPending || articlesQuery.isPending) {
     return (
-      <div className="grid gap-4">
-        <Skeleton className="h-16" />
-        <Skeleton className="h-96" />
+      <div className="grid gap-5">
+        <PageHeader title="朋友圈" description="抓取状态与最近文章。" />
+        <Skeleton className="h-72 rounded-xl" />
+        <Skeleton className="h-80 rounded-xl" />
       </div>
     )
   }
 
   const friends = healthQuery.data?.friends ?? []
-  const articles = (articlesQuery.data?.articles ?? []).slice(0, 20)
-  const sources = friends.filter((f) => f.status === 'active' && f.inCircle && f.feed)
-  const progress = status?.round && status.round.total > 0 ? Math.round((status.round.done / status.round.total) * 100) : 0
-  if (!status) return <p className="text-sm text-muted-foreground">数据加载失败，请刷新重试。</p>
+  const sources = friends.filter((friend) => friend.status === 'active' && friend.inCircle && friend.feed)
+  const failed = sources.filter((source) => source.state?.reachable === false || source.state?.crawlable === false)
+  const filtered = filter === 'failed' ? failed : sources
+
+  const allArticles = articlesQuery.data?.articles ?? []
+  const pages = Math.max(1, Math.ceil(allArticles.length / pageSize))
+  const current = Math.min(page, pages)
+  const articles = allArticles.slice((current - 1) * pageSize, current * pageSize)
+  const job = jobQuery.data
+  const round = job?.round
+  const running = Boolean(job?.running)
+  const percent = round ? jobProgress(round.done, round.total) : 0
 
   return (
-    <div className="grid gap-4 [&>*]:min-w-0">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold">朋友圈</h1>
-          <p className="text-sm text-muted-foreground">
-            每 5 分钟抓一批；{status.dueCount}/{status.activeCount} 个源待检查。
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {rebuildEnabled && (
-            <Button variant="outline" onClick={() => rebuildMutation.mutate()} disabled={rebuildBusy}>
-              <Hammer /> {rebuildBusy ? '触发中…' : '重建站点'}
-            </Button>
-          )}
-          <Button onClick={() => crawlMutation.mutate()} disabled={crawlMutation.isPending || status.running}>
-            <Play /> {crawlMutation.isPending || status.running ? '抓取进行中…' : '手动抓取一轮'}
-          </Button>
-        </div>
-      </div>
+    <TooltipProvider>
+      <div className="grid gap-5">
+        <PageHeader
+          eyebrow={`${sources.length} 个抓取源 · ${failed.length} 个异常`}
+          title="朋友圈"
+          description="分批轮转抓取；抓取状态与文章会随任务完成自动刷新。"
+          actions={
+            <>
+              {rebuildEnabled && (
+                <Button variant="outline" onClick={() => rebuild.mutate()} disabled={rebuild.isPending}>
+                  <Hammer /> {rebuild.isPending ? '触发中…' : '重建站点'}
+                </Button>
+              )}
+              <Button onClick={() => crawl.mutate()} disabled={crawl.isPending || running}>
+                <Play /> {running ? '抓取进行中…' : crawl.isPending ? '启动中…' : '手动抓取一轮'}
+              </Button>
+            </>
+          }
+        />
 
-      {status.running && status.round && (
-        <Card>
-          <CardContent className="pt-4">
-            <div className="mb-2 flex items-center justify-between text-sm">
-              <span>
-                {status.round.kind === 'health' ? '体检进行中' : '抓取进行中'}
-              </span>
-              <span className="text-muted-foreground">
-                {status.round.done}/{status.round.total} · {progress}%
-              </span>
+        {running && round && (
+          <Card className="py-0">
+            <div className="grid gap-2 px-4 py-3">
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="text-muted-foreground">
+                  {round.kind === 'health' ? '体检进行中' : '抓取进行中'} · 任务完成后自动刷新
+                </span>
+                <span className="font-mono tabular-nums text-subtle">{round.done}/{round.total} · {percent}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-secondary" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label="抓取进度">
+                <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${percent}%` }} />
+              </div>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+          </Card>
+        )}
+
+        <Card className="gap-0 py-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-base"><Rss className="size-4 text-primary" /> 抓取状态</h2>
+              <p className="mt-1 text-[11px] text-subtle">按下次检查时间排序，失败源会按退避阶梯拉长间隔。</p>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Rss className="size-4" /> 抓取状态（{sources.length} 个源）
-          </CardTitle>
-          <CardDescription>按下次检查时间排序。</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {sources.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              还没有可抓取的源：在「友链」页补上 feed 即可。
-            </p>
+            <SegmentedControl
+              ariaLabel="筛选抓取源"
+              value={filter === 'failed' ? 'failed' : 'all'}
+              onChange={setFilter}
+              items={[
+                { value: 'all', label: '全部', count: sources.length },
+                { value: 'failed', label: '异常', count: failed.length },
+              ]}
+            />
+          </div>
+          {filtered.length === 0 ? (
+            <EmptyState
+              compact
+              icon={Rss}
+              title={sources.length === 0 ? '还没有可抓取的源' : '没有异常源'}
+              description={sources.length === 0 ? '在「友链」页给友链补上 RSS 地址即可。' : '所有源最近一次检查都正常。'}
+            />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>源</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>最近发文</TableHead>
-                  <TableHead>最近成功</TableHead>
-                  <TableHead>下次检查</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {[...sources]
-                  .sort((a, b) => (a.state?.nextCheckAt ?? '') < (b.state?.nextCheckAt ?? '') ? -1 : 1)
-                  .map((f) => {
-                    const st = f.state
-                    const failed = st?.reachable === false || st?.crawlable === false
-                    return (
-                      <TableRow key={f.id}>
-                        <TableCell>
-                          <div className="font-medium">{f.author}</div>
-                          <a href={f.link} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:underline">
-                            {f.link}
-                          </a>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap items-center gap-1">
-                            {failed ? <Badge variant="destructive">失败</Badge> : <Badge variant="secondary">正常</Badge>}
-                            {st?.crawlable === false && f.feed && <Badge variant="outline">RSS 不可用</Badge>}
-                            {st && st.failCount > 0 && <Badge variant="outline">连败 {st.failCount}</Badge>}
-                            {st?.lastError && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="cursor-help text-xs text-muted-foreground">错误详情</span>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-72 text-xs">{st.lastError}</TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs">{fmt(st?.lastPostPublished)}</TableCell>
-                        <TableCell className="text-xs">{fmt(st?.lastOkAt)}</TableCell>
-                        <TableCell className="text-xs">{fmt(st?.nextCheckAt)}</TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" className="size-8" disabled={singleBusy !== null} onClick={() => crawlOneMutation.mutate(f.id)} aria-label="抓取此源">
-                            <RefreshCw className={`size-3.5 ${singleBusy === f.id ? 'animate-spin' : ''}`} />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Newspaper className="size-4" /> 最近文章（{articles.length}）
-          </CardTitle>
-          <CardDescription>按发布时间倒序，过期文章自动清理。</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {articles.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">还没有抓到文章</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>标题</TableHead>
-                  <TableHead className="hidden sm:table-cell">来源</TableHead>
-                  <TableHead className="hidden md:table-cell">发布时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {articles.map((a) => (
-                  <TableRow key={a.id}>
-                    <TableCell className="max-w-96">
-                      <a href={a.link} target="_blank" rel="noopener noreferrer" className="block truncate font-medium hover:underline">
-                        {a.title}
+            <DataTable
+              rows={[...filtered].sort((a, b) => (a.state?.nextCheckAt ?? '').localeCompare(b.state?.nextCheckAt ?? ''))}
+              getRowKey={(source) => source.id}
+              columns={[
+                {
+                  key: 'source',
+                  header: '源',
+                  cell: (source) => (
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-foreground">{source.author}</p>
+                      <a href={source.link} target="_blank" rel="noreferrer" className="block truncate font-mono text-[10px] text-subtle hover:text-primary hover:underline">
+                        {source.link}
                       </a>
-                    </TableCell>
-                    <TableCell className="hidden text-xs sm:table-cell">{a.friendAuthor}</TableCell>
-                    <TableCell className="hidden text-xs md:table-cell">{fmt(a.publishedAt)}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive" onClick={() => deleteArticleMutation.mutate(a.id)} aria-label="删除文章">
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'status',
+                  header: '状态',
+                  cell: (source) => (
+                    <div className="flex flex-wrap items-center gap-1">
+                      {source.state?.reachable === false || source.state?.crawlable === false ? (
+                        <StatusBadge tone="danger">失败</StatusBadge>
+                      ) : (
+                        <StatusBadge tone="success">正常</StatusBadge>
+                      )}
+                      {source.state?.crawlable === false && <StatusBadge tone="warning">RSS 不可用</StatusBadge>}
+                      {(source.state?.failCount ?? 0) > 0 && <StatusBadge tone="neutral">连败 {source.state?.failCount}</StatusBadge>}
+                      {source.state?.lastError && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-[10px] text-subtle underline underline-offset-2 hover:text-foreground">
+                              错误详情
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-72 text-xs">{source.state.lastError}</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  ),
+                },
+                { key: 'lastPost', header: '最近发文', cell: (source) => fmt(source.state?.lastPostPublished), hideOnMobile: true },
+                { key: 'lastOk', header: '最近成功', cell: (source) => fmt(source.state?.lastOkAt), hideOnMobile: true },
+                { key: 'nextCheck', header: '下次检查', cell: (source) => fmt(source.state?.nextCheckAt), hideOnMobile: true },
+              ]}
+              actions={(source) => (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => crawlOne.mutate(source.id)}
+                  disabled={crawlOne.isPending}
+                  aria-label={`抓取 ${source.author}`}
+                >
+                  <RefreshCw className={crawlOne.isPending && crawlOne.variables === source.id ? 'animate-spin' : undefined} />
+                </Button>
+              )}
+            />
           )}
-        </CardContent>
-      </Card>
-    </div>
+        </Card>
+
+        <Card className="gap-0 py-0">
+          <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-base"><Newspaper className="size-4 text-primary" /> 最近文章</h2>
+              <p className="mt-1 text-[11px] text-subtle">按发布时间倒序；超出保留期的文章会自动清理。</p>
+            </div>
+            <StatusBadge tone="neutral">{allArticles.length} 篇</StatusBadge>
+          </div>
+          {allArticles.length === 0 ? (
+            <EmptyState compact icon={Newspaper} title="还没有抓到文章" description="抓取成功后，文章会出现在这里。" />
+          ) : (
+            <div className="grid gap-3 p-3 sm:p-4">
+              <DataTable
+                rows={articles}
+                getRowKey={(article) => article.id}
+                columns={[
+                  {
+                    key: 'title',
+                    header: '标题',
+                    cell: (article) => (
+                      <a href={article.link} target="_blank" rel="noreferrer" className="block max-w-96 truncate text-sm text-foreground hover:underline">
+                        {article.title}
+                      </a>
+                    ),
+                  },
+                  { key: 'author', header: '来源', cell: (article) => article.friendAuthor, hideOnMobile: true },
+                  { key: 'published', header: '发布时间', cell: (article) => fmt(article.publishedAt), hideOnMobile: true },
+                ]}
+                actions={(article) => (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-danger hover:text-danger"
+                    onClick={() => setDeleteArticle(article)}
+                    aria-label={`删除文章 ${article.title}`}
+                  >
+                    <Trash2 />
+                  </Button>
+                )}
+              />
+              <Pagination page={current} pageSize={pageSize} total={allArticles.length} onPageChange={(next) => setPageParam(String(next))} />
+            </div>
+          )}
+        </Card>
+
+        <ConfirmDialog
+          open={deleteArticle !== null}
+          onOpenChange={(open) => !open && setDeleteArticle(null)}
+          title="删除文章？"
+          description={deleteArticle ? `将删除「${deleteArticle.title}」，下次抓取时可能重新出现。` : null}
+          confirmLabel="删除"
+          tone="danger"
+          pending={removeArticle.isPending}
+          onConfirm={() => deleteArticle && removeArticle.mutate(deleteArticle.id)}
+        />
+      </div>
+    </TooltipProvider>
   )
 }
