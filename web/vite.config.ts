@@ -9,7 +9,7 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   server: {
-    // 管理台开发：前端热更 + /api 代理到 wrangler dev
+    // 管理台开发：前端热更 + /api 代理到 Node 服务（pnpm dev）
     proxy: {
       '/api': { target: 'http://127.0.0.1:8787', changeOrigin: false },
     },
