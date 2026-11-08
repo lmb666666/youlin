@@ -14,11 +14,11 @@ import {
 import { queryKeys } from './query'
 import type { BackupStatusResponse, DavListResponse } from '@youlin/contracts'
 
-export function useMe() {
+export function useMe(options?: { retry?: boolean }) {
   return useQuery({
     queryKey: queryKeys.me,
     queryFn: () => api<{ ok: true }>('/api/admin/me'),
-    retry: false,
+    retry: options?.retry ?? false,
   })
 }
 
@@ -72,20 +72,20 @@ export function useArticlesQuery() {
   })
 }
 
+/** 兼容旧页面；新代码用 useJobStatus（lib/jobs.ts） */
 export function useCrawlStatusQuery(pollWhenIdle = false) {
   return useQuery({
     queryKey: queryKeys.crawlStatus,
     queryFn: () => api<CrawlStatus>('/api/admin/crawl/status'),
-    // 轮转进行中才轮询；完成/失败后自动停下（手动触发的启动竞态可临时 pollWhenIdle）
     refetchInterval: (query) => (query.state.data?.running || pollWhenIdle ? 1500 : false),
   })
 }
 
-export function useApplicationsQuery(status: string) {
+export function useApplicationsQuery(status: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.applications(status),
     queryFn: () => api<ApplicationListResponse>(`/api/admin/applications?status=${status}`),
-    placeholderData: (prev) => prev,
+    enabled,
   })
 }
 

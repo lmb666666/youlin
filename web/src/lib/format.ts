@@ -26,3 +26,36 @@ export function settingsDateTimeOptions(settings: Record<string, unknown>): Date
     timeZone: typeof settings['site.timezone'] === 'string' ? settings['site.timezone'] : undefined,
   }
 }
+
+const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ['year', 365 * 24 * 60 * 60 * 1000],
+  ['month', 30 * 24 * 60 * 60 * 1000],
+  ['day', 24 * 60 * 60 * 1000],
+  ['hour', 60 * 60 * 1000],
+  ['minute', 60 * 1000],
+]
+
+/** 相对时间：用于「最近文章」「待审申请」等列表；无法解析时回退原文。 */
+export function formatRelative(value: string | null | undefined, locale = 'zh-CN'): string {
+  if (!value) return '—'
+  const time = new Date(value).getTime()
+  if (Number.isNaN(time)) return value
+  const diff = time - Date.now()
+  const abs = Math.abs(diff)
+  try {
+    const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+    for (const [unit, ms] of UNITS) {
+      if (abs >= ms) return formatter.format(Math.round(diff / ms), unit)
+    }
+    return '刚刚'
+  } catch {
+    return value
+  }
+}
+
+export function formatBytes(bytes: number | undefined): string {
+  if (!bytes || bytes < 0) return '—'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}

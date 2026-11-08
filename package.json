@@ -17,10 +17,11 @@
     "start": "node server/dist/main.mjs",
     "lint": "eslint .",
     "docs:config": "node scripts/gen-config-docs.mjs",
-    "test": "vitest run",
+    "test": "vitest run && pnpm --filter youlin-web test",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit && pnpm --filter youlin-web typecheck",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "test:web": "pnpm --filter youlin-web test"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
