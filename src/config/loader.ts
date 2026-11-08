@@ -52,8 +52,8 @@ function sanitize(flat: FlatSettings, source: string): FlatSettings {
   return out
 }
 
-// 每个请求都读全量 settings（59 行）会形成明显的数据库读放大；
-// 用 per-isolate 短 TTL 缓存，设置写入后立即失效，多 isolate 最坏延迟 5 秒。
+// 每个请求都读全量 settings 会形成明显的数据库读放大；
+// 用进程内短 TTL 缓存，设置写入后立即失效，多进程最坏延迟 5 秒。
 let cache: { key: string; at: number; flat: FlatSettings } | null = null
 let cacheMs = 5_000
 

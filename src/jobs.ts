@@ -3,7 +3,7 @@ import { runCronTick, type CrawlSummary } from './crawler/crawl'
 import { maybeRunScheduledBackup, type WebdavRunResult } from './backup/run'
 import { logger } from './log'
 
-/** 两个运行时共用的定时作业：抓取轮转 + 到点自动备份到 WebDAV */
+/** 定时作业：抓取轮转 + 到点自动备份到 WebDAV */
 
 export interface ScheduledSummary {
   crawl: CrawlSummary
