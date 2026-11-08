@@ -18,6 +18,10 @@ const bareHost = z
 /** 需要协议校验的配置项；其余 string 保持宽松（可为空/域名/前缀） */
 const SPECIAL_SCHEMAS: Record<string, z.ZodType> = {
   'site.url': z.union([z.literal(''), httpUrl, bareHost]),
+  'ui.accentColor': z.union([
+    z.literal(''),
+    z.string().regex(/^#[0-9a-fA-F]{6}$/, '强调色需为 #rrggbb 格式'),
+  ]),
   'backup.webdavUrl': z
     .union([z.literal(''), httpUrl])
     .refine((v) => {
