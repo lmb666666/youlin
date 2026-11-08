@@ -122,7 +122,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     label: '接口',
     description: '对外接口的缓存与输出行为。',
     fields: [
-      { key: 'api.cacheSeconds', type: 'number', default: 300, min: 0, max: 86400, label: '边缘缓存（秒）', description: '接口响应的缓存秒数。' },
+      { key: 'api.cacheSeconds', type: 'number', default: 300, min: 0, max: 86400, label: 'HTTP 缓存（秒）', description: '友链数据与朋友圈响应的 Cache-Control max-age。' },
       { key: 'api.corsOrigin', type: 'string', default: '*', label: 'CORS 来源', description: '允许的 Origin，* 或具体来源。' },
       { key: 'api.includeHidden', type: 'boolean', default: false, label: '输出隐藏记录', description: '开启后隐藏的友链也会出现在友链数据接口。' },
       { key: 'api.maxLimit', type: 'number', default: 500, min: 1, max: 5000, label: 'limit 上限', description: '?limit= 允许的最大值。' },
@@ -148,7 +148,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     description: '管理台与申请页的外观。',
     fields: [
       { key: 'ui.theme', type: 'enum', options: ['system', 'light', 'dark'], default: 'system', label: '主题', description: '跟随系统 / 浅色 / 深色。' },
-      { key: 'ui.accentColor', type: 'string', default: '', label: '强调色', description: '管理台主色，留空用默认。', placeholder: 'oklch(0.6 0.2 260)' },
+      { key: 'ui.accentColor', type: 'string', default: '', label: '强调色', description: '管理台与申请页主色，留空用默认；支持 #rrggbb。', placeholder: '#d97757' },
       { key: 'ui.pageSize', type: 'number', default: 20, min: 5, max: 200, label: '分页大小', description: '列表页每页条数。' },
     ],
   },
@@ -180,8 +180,8 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     label: '通知（v1.1 预留）',
     description: '事件通知接口已定义，发送逻辑随 v1.1 提供。',
     fields: [
-      { key: 'notify.webhookUrl', type: 'string', default: '', label: 'Webhook 地址', description: '新申请 / 友链失联时 POST 通知。' },
-      { key: 'notify.events', type: 'stringList', default: ['application', 'linkDown'], label: '通知事件', description: 'application 新申请 / linkDown 友链失联。' },
+      { key: 'notify.webhookUrl', type: 'string', default: '', label: 'Webhook 地址', description: '预留字段，当前不会发送通知。' },
+      { key: 'notify.events', type: 'stringList', default: ['application', 'linkDown'], label: '通知事件', description: '预留字段；当前不会发送。' },
     ],
   },
 ]

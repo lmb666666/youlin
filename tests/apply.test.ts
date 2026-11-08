@@ -93,9 +93,9 @@ describe('接口三 GET /apply（申请页）', () => {
     const html = await (await SELF.fetch(`${BASE}/apply`)).text()
     expect(html).not.toContain('</script><script>alert(1)')
     expect(html).toContain('\\u003c/script>')
-    // 样式注入被过滤
+    // 样式注入被过滤：非法颜色回退默认强调色
     expect(html).not.toContain('display:none')
-    expect(html).toContain('--accent:#ff0000')
+    expect(html).toContain('--accent:#d97757')
   })
 
   it('POST 预检（OPTIONS）返回 CORS 头', async () => {
@@ -105,15 +105,14 @@ describe('接口三 GET /apply（申请页）', () => {
     expect(res.headers.get('access-control-allow-headers')).toContain('Content-Type')
   })
 
-  it('合法 accentColor 同时覆盖浅色/深色默认值', async () => {
+  it('合法 accentColor 覆盖默认值并计算前景色', async () => {
     await setSettings({ 'ui.accentColor': '#ff0000' })
     const html = await (await SELF.fetch(`${BASE}/apply`)).text()
-    const light = html.indexOf('--accent:#18181b')
-    const dark = html.indexOf('--accent:#fafafa')
+    const darkMedia = html.indexOf('@media (prefers-color-scheme:dark)')
     const custom = html.lastIndexOf('--accent:#ff0000')
-    expect(light).toBeGreaterThanOrEqual(0)
-    expect(dark).toBeGreaterThan(light)
-    expect(custom).toBeGreaterThan(dark)
+    expect(darkMedia).toBeGreaterThanOrEqual(0)
+    expect(custom).toBeGreaterThan(darkMedia)
+    expect(html).toContain('--accent-fg:#1f1e1d')
   })
 
   it('site.url 非 http(s) 时不渲染返回链接', async () => {
