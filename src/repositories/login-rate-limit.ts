@@ -5,7 +5,7 @@ import type { Db } from '../types'
 
 const WINDOW_MS = 3_600_000
 
-/** 原子消费一次登录尝试：未超限则记录并返回 true */
+/** 原子消费一次登录尝试：未超限则记录并返回 true（IMMEDIATE：读-判-写跨进程不丢更新） */
 export function consumeLoginAttempt(db: Db, ip: string, limit: number, now = Date.now()): boolean {
   return getOrm(db).transaction((tx) => {
     const cutoff = now - WINDOW_MS
@@ -16,7 +16,7 @@ export function consumeLoginAttempt(db: Db, ip: string, limit: number, now = Dat
     if (used >= limit) return false
     tx.insert(loginAttempts).values({ ip, at: now }).run()
     return true
-  })
+  }, { behavior: 'immediate' })
 }
 
 /** 登录成功后清空该 IP 的历史尝试 */
