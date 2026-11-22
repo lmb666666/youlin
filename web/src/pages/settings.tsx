@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { ConfirmDialog } from '@/components/common/confirm-dialog'
 import { FormField } from '@/components/common/form-field'
 import { PageHeader } from '@/components/common/page-header'
 import { ErrorState } from '@/components/common/page-state'
@@ -20,7 +21,7 @@ import { SearchField } from '@/components/common/search-field'
 import { api, apiDownload } from '@/lib/api'
 import { useSettingsQuery, useSettingsSchemaQuery } from '@/lib/queries'
 import { queryKeys } from '@/lib/query'
-import { useBeforeUnload } from '@/lib/dirty'
+import { useBeforeUnload, useNavBlocker } from '@/lib/dirty'
 import { downloadBlob } from '@/lib/download'
 import { useQueryParam } from '@/lib/url-state'
 import { cn } from '@/lib/utils'
@@ -44,6 +45,19 @@ function StringListInput({
 }) {
   const joined = Array.isArray(value) ? (value as string[]).join(', ') : ''
   const [draft, setDraft] = useState<string | null>(null)
+  const latest = useRef({ draft, onChange })
+  useEffect(() => {
+    latest.current = { draft, onChange }
+  })
+  useEffect(
+    () => () => {
+      // 卸载时未 blur 的草稿要落账，否则搜索过滤/重置导致组件卸载会静默丢编辑
+      const { draft: pending, onChange: commit } = latest.current
+      if (pending === null) return
+      commit(pending.split(/[,，]/).map((item) => item.trim()).filter(Boolean))
+    },
+    [],
+  )
   return (
     <Input
       id={id}
@@ -72,6 +86,18 @@ function JsonEditor({
 }) {
   const [raw, setRaw] = useState<string | null>(null)
   const invalid = raw !== null && !jsonParses(raw)
+  const latest = useRef({ invalid, onInvalidChange })
+  useEffect(() => {
+    latest.current = { invalid, onInvalidChange }
+  })
+  useEffect(
+    () => () => {
+      // 卸载时若 JSON 仍非法：控件回退到最近一次合法值，并解除「禁止保存」标记，
+      // 否则 invalidKeys 残留会让保存按钮一直灰着且找不到原因
+      if (latest.current.invalid) latest.current.onInvalidChange(false)
+    },
+    [],
+  )
   return (
     <div className="grid gap-1">
       <Textarea
@@ -215,15 +241,23 @@ export default function SettingsPage() {
   const serverValues = useMemo<SettingsValues>(() => settingsQuery.data?.values ?? {}, [settingsQuery.data])
   const values = useMemo(() => ({ ...serverValues, ...draft }), [serverValues, draft])
   const dirtyKeys = Object.keys(draft)
+  const defaults = useMemo(() => {
+    const map: Record<string, unknown> = {}
+    for (const group of schemaQuery.data?.groups ?? []) {
+      for (const field of group.fields) map[field.key] = field.default
+    }
+    return map
+  }, [schemaQuery.data])
 
   useBeforeUnload(dirtyKeys.length > 0)
+  const blocker = useNavBlocker(dirtyKeys.length > 0)
 
   const setField = (key: string, value: unknown) => {
-    // 数字输入清空时不要让 undefined 进入草稿：JSON.stringify 会丢键，服务端收不到
-    if (value === undefined) return
+    // 数字输入清空时 value 是 undefined：允许进草稿（输入框保持空白），
+    // 保存时统一按「恢复默认」提交——直接发 undefined 会被 JSON.stringify 丢键
     setDraft((previous) => {
       const next = { ...previous }
-      if (same(value, serverValues[key])) delete next[key]
+      if (value !== undefined && same(value, serverValues[key])) delete next[key]
       else next[key] = value
       return next
     })
@@ -258,7 +292,13 @@ export default function SettingsPage() {
   }
 
   const save = useMutation({
-    mutationFn: () => api('/api/admin/settings', { method: 'PUT', body: JSON.stringify(draft) }),
+    mutationFn: () => {
+      const payload: Values = {}
+      for (const [key, value] of Object.entries(draft)) {
+        payload[key] = value === undefined ? defaults[key] : value
+      }
+      return api('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) })
+    },
     onSuccess: async () => {
       setDraft({})
       setInvalidKeys(new Set())
@@ -452,12 +492,25 @@ export default function SettingsPage() {
       <SaveBar
         count={dirtyKeys.length}
         pending={save.isPending}
+        disabled={invalidKeys.size > 0}
         onDiscard={() => {
           setDraft({})
           setInvalidKeys(new Set())
           resetFieldDrafts()
         }}
         onSave={() => save.mutate()}
+      />
+
+      <ConfirmDialog
+        open={blocker.state === 'blocked'}
+        onOpenChange={(open) => {
+          if (!open && blocker.state === 'blocked') blocker.reset?.()
+        }}
+        title="有未保存的修改"
+        description="离开设置页将丢弃未保存的修改。"
+        confirmLabel="丢弃并离开"
+        tone="danger"
+        onConfirm={() => blocker.proceed?.()}
       />
 
       <Dialog open={importOpen} onOpenChange={(open) => { setImportOpen(open); if (!open) { setImportError(null) } }}>

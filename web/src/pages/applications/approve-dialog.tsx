@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { FormField } from '@/components/common/form-field'
 import { api, type Application } from '@/lib/api'
+import { emptyToUndefined } from '@/lib/form'
 import { invalidateLinkData, queryKeys } from '@/lib/query'
 
 interface ApproveResult {
@@ -58,7 +59,7 @@ export function ApproveDialog({
       }),
     onSuccess: async (result) => {
       toast.success(`已通过并入库存为友链 #${result.friendId}${result.rebuild?.triggered ? '，已触发重建' : ''}`)
-      await client.invalidateQueries({ queryKey: queryKeys.applications('all') })
+      await client.invalidateQueries({ queryKey: queryKeys.applicationsRoot })
       await client.invalidateQueries({ queryKey: queryKeys.stats })
       invalidateLinkData(client)
       onOpenChange(false)
@@ -80,9 +81,7 @@ export function ApproveDialog({
         </DialogHeader>
 
         <form
-          onSubmit={form.handleSubmit((values) =>
-            mutation.mutate({ ...values, since: values.since || undefined }),
-          )}
+          onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
           className="grid gap-4"
         >
           {form.formState.errors.root?.message && (
@@ -127,7 +126,12 @@ export function ApproveDialog({
               <Input id="approve-avatar" {...form.register('avatar')} maxLength={2048} placeholder="https://…/avatar.webp" aria-invalid={Boolean(avatarError)} />
             </FormField>
             <FormField id="approve-since" label="订阅日期" error={sinceError} hint="留空则使用今天">
-              <Input id="approve-since" type="date" {...form.register('since')} aria-invalid={Boolean(sinceError)} />
+              <Input
+                id="approve-since"
+                type="date"
+                {...form.register('since', { setValueAs: emptyToUndefined })}
+                aria-invalid={Boolean(sinceError)}
+              />
             </FormField>
           </div>
 
