@@ -32,7 +32,10 @@ const SPECIAL_SCHEMAS: Record<string, z.ZodType> = {
   'linkCheck.backoffLadder': z
     .array(z.tuple([z.number().int().min(0), z.number().int().min(1)]))
     .min(1)
-    .refine((rows) => rows.every((row, i) => i === 0 || row[0] > rows[i - 1]![0]), '阶梯需按失联天数升序'),
+    .refine(
+      (rows) => rows.every((row, i) => i === 0 || (row[0] > rows[i - 1]![0] && row[1] > rows[i - 1]![1])),
+      '阶梯需按失联天数升序，复查间隔小时数随之递增',
+    ),
   'site.logo': z.union([
     z.literal(''),
     httpUrl,

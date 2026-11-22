@@ -78,7 +78,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
         key: 'linkCheck.backoffLadder', type: 'json',
         default: [[10, 120], [30, 240], [60, 360]],
         label: '失联退避阶梯',
-        description: '[失联天数, 复查间隔小时]，升序排列。',
+        description: '[失联天数, 复查间隔小时]，两列均需升序。',
         full: true,
       },
     ],
