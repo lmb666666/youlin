@@ -78,8 +78,10 @@ export default function CirclePage() {
     onSuccess: () => {
       setDeleteArticle(null)
       toast.success('文章已删除')
+      // 体检页的 lastPostPublished 依赖文章数据，一并失效
       void client.invalidateQueries({ queryKey: queryKeys.articles })
       void client.invalidateQueries({ queryKey: queryKeys.stats })
+      void client.invalidateQueries({ queryKey: queryKeys.health })
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : '删除失败'),
   })
@@ -236,7 +238,7 @@ export default function CirclePage() {
                   variant="ghost"
                   size="icon-sm"
                   onClick={() => crawlOne.mutate(source.id)}
-                  disabled={crawlOne.isPending}
+                  disabled={crawlOne.isPending && crawlOne.variables === source.id}
                   aria-label={`抓取 ${source.author}`}
                 >
                   <RefreshCw className={crawlOne.isPending && crawlOne.variables === source.id ? 'animate-spin' : undefined} />

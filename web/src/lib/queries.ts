@@ -4,7 +4,6 @@ import {
   type AdminStats,
   type ApplicationListResponse,
   type ArticleListResponse,
-  type CrawlStatus,
   type FriendListResponse,
   type GroupListResponse,
   type HealthListResponse,
@@ -14,11 +13,11 @@ import {
 import { queryKeys } from './query'
 import type { BackupStatusResponse, DavListResponse } from '@youlin/contracts'
 
-export function useMe(options?: { retry?: boolean }) {
+export function useMe() {
   return useQuery({
     queryKey: queryKeys.me,
     queryFn: () => api<{ ok: true }>('/api/admin/me'),
-    retry: options?.retry ?? false,
+    retry: false,
   })
 }
 
@@ -44,10 +43,11 @@ export function useGroupsQuery() {
   })
 }
 
-export function useFriendsQuery() {
+export function useFriendsQuery(enabled = true) {
   return useQuery({
     queryKey: queryKeys.friends,
     queryFn: () => api<FriendListResponse>('/api/admin/friends'),
+    enabled,
   })
 }
 
@@ -69,15 +69,6 @@ export function useArticlesQuery() {
   return useQuery({
     queryKey: queryKeys.articles,
     queryFn: () => api<ArticleListResponse>('/api/admin/articles'),
-  })
-}
-
-/** 兼容旧页面；新代码用 useJobStatus（lib/jobs.ts） */
-export function useCrawlStatusQuery(pollWhenIdle = false) {
-  return useQuery({
-    queryKey: queryKeys.crawlStatus,
-    queryFn: () => api<CrawlStatus>('/api/admin/crawl/status'),
-    refetchInterval: (query) => (query.state.data?.running || pollWhenIdle ? 1500 : false),
   })
 }
 

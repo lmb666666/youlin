@@ -54,8 +54,10 @@ export function formatRelative(value: string | null | undefined, locale = 'zh-CN
 }
 
 export function formatBytes(bytes: number | undefined): string {
-  if (!bytes || bytes < 0) return '—'
+  // 0 字节是合法值，正常显示；仅未定义/负数视为「无数据」
+  if (bytes === undefined || bytes < 0) return '—'
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
 }

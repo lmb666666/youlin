@@ -11,18 +11,6 @@ export class ApiError extends Error {
   }
 }
 
-/** 非 JSON 请求失败时提取服务端错误文案 */
-export async function readError(res: Response): Promise<string> {
-  let message = `请求失败（${res.status}）`
-  try {
-    const body = (await res.json()) as { error?: { message?: string } }
-    if (body.error?.message) message = body.error.message
-  } catch {
-    /* 保持默认文案 */
-  }
-  return message
-}
-
 function redirectToLogin(path: string): void {
   if (path.startsWith('/api/admin/login')) return
   if (typeof window === 'undefined') return

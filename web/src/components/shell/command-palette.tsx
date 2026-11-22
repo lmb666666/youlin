@@ -26,7 +26,8 @@ import { NAV_ITEMS } from './nav'
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const navigate = useNavigate()
   const { theme, setTheme } = useTheme()
-  const friends = useFriendsQuery()
+  // 面板常驻挂载：只在打开时拉取友链，避免应用启动即发全量 friends 请求
+  const friends = useFriendsQuery(open)
 
   const crawl = useApiMutation<{ started: number }, void>({
     mutationFn: () => api('/api/admin/crawl', { method: 'POST' }),

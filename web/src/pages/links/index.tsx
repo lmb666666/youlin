@@ -37,7 +37,8 @@ import { EmptyState, ErrorState } from '@/components/common/page-state'
 import { PageHeader } from '@/components/common/page-header'
 import { SearchField } from '@/components/common/search-field'
 import { StatusBadge } from '@/components/common/status-badge'
-import { api, type Friend, type FriendListResponse, type Group, type GroupListResponse } from '@/lib/api'
+import { api, apiDownload, type Friend, type FriendListResponse, type Group, type GroupListResponse } from '@/lib/api'
+import { downloadBlob } from '@/lib/download'
 import { queryKeys, invalidateLinkData } from '@/lib/query'
 import { useFriendsQuery, useGroupsQuery } from '@/lib/queries'
 import { useSettings } from '@/lib/settings'
@@ -195,8 +196,8 @@ export default function LinksPage() {
       toast.error(error instanceof Error ? error.message : '操作失败')
     },
     onSettled: () => {
-      void client.invalidateQueries({ queryKey: queryKeys.friends })
-      void client.invalidateQueries({ queryKey: queryKeys.stats })
+      // 隐藏状态会同时影响体检页展示与统计，走统一的级联失效口径
+      invalidateLinkData(client)
     },
   })
 
@@ -211,6 +212,15 @@ export default function LinksPage() {
       toast.success(target.kind === 'friend' ? '友链已删除' : '分组及其友链已删除')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : '删除失败'),
+  })
+
+  const exportFile = useMutation({
+    // 导出走统一 API 封装：会话过期时按 401 跳登录，而不是把错误 JSON 当文件下载
+    mutationFn: (format: 'json' | 'csv' | 'opml') => apiDownload(`/api/admin/export?format=${format}`),
+    onSuccess: ({ blob, filename }, format) => {
+      downloadBlob(blob, filename ?? `youlin-export-${new Date().toISOString().slice(0, 10)}.${format}`)
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : '导出失败'),
   })
 
   const groupCount = (groupId: number) => friends.filter((friend) => friend.groupId === groupId).length
@@ -316,9 +326,9 @@ export default function LinksPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild><a href="/api/admin/export?format=json" download>JSON</a></DropdownMenuItem>
-                <DropdownMenuItem asChild><a href="/api/admin/export?format=csv" download>CSV</a></DropdownMenuItem>
-                <DropdownMenuItem asChild><a href="/api/admin/export?format=opml" download>OPML</a></DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportFile.mutate('json')}>JSON</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportFile.mutate('csv')}>CSV</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportFile.mutate('opml')}>OPML</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Button variant="outline" onClick={() => setGroupDialog({ open: true, editing: null })}>

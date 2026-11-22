@@ -45,6 +45,7 @@ function PanelHead({ title, sub, to, action }: { title: string; sub: string; to?
 
 export default function DashboardPage() {
   const settings = useSettings()
+  const locale = typeof settings['site.locale'] === 'string' && settings['site.locale'] ? settings['site.locale'] : 'zh-CN'
   const fmtRelative = (value: string | null | undefined) => formatRelative(value, typeof settings['site.locale'] === 'string' ? settings['site.locale'] : 'zh-CN')
   const fmtDateTime = (value: string | null | undefined) => formatDateTime(value, settingsDateTimeOptions(settings))
 
@@ -105,7 +106,7 @@ export default function DashboardPage() {
   return (
     <div className="grid gap-5">
       <PageHeader
-        eyebrow={new Intl.DateTimeFormat('zh-CN', { dateStyle: 'full' }).format(new Date())}
+        eyebrow={new Intl.DateTimeFormat(locale, { dateStyle: 'full' }).format(new Date())}
         title="总览"
         description="站点数据、待办与抓取状态一览。"
         actions={

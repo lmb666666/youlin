@@ -39,9 +39,9 @@ export function Avatar({
         className,
       )}
       style={{ backgroundColor: colorOf(name) }}
-      aria-hidden="true"
     >
-      <span className="grid size-full place-items-center">{initialOf(name)}</span>
+      {/* 兜底首字母是装饰性的：身份由相邻的名称文本承载，别让读屏念出单字 */}
+      <span className="grid size-full place-items-center" aria-hidden="true">{initialOf(name)}</span>
       {showImage && (
         <img
           src={src ?? undefined}

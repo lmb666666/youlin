@@ -61,7 +61,7 @@ export default function ApplicationsPage() {
     onSuccess: async (result) => {
       setClearOpen(false)
       toast.success(`已清理 ${result.deleted} 条已处理申请`)
-      await client.invalidateQueries({ queryKey: queryKeys.applications('all') })
+      await client.invalidateQueries({ queryKey: queryKeys.applicationsRoot })
       await client.invalidateQueries({ queryKey: queryKeys.stats })
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : '清理失败'),

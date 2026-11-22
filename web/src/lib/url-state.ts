@@ -23,19 +23,3 @@ export function useQueryParam(key: string, fallback = '') {
 
   return [value, setValue] as const
 }
-
-/** 数字参数，非法值回退默认值。 */
-export function useNumberParam(key: string, fallback: number) {
-  const [raw, setRaw] = useQueryParam(key)
-  const value = Number.parseInt(raw, 10)
-  return [Number.isFinite(value) && value > 0 ? value : fallback, setRaw] as const
-}
-
-/** 简易防抖（搜索输入）；不引入额外依赖。 */
-export function debounce<T extends (...args: never[]) => void>(fn: T, delay = 200) {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  return (...args: Parameters<T>) => {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => fn(...args), delay)
-  }
-}

@@ -36,7 +36,7 @@ export function RejectDialog({
       }),
     onSuccess: async () => {
       toast.success('已拒绝该申请')
-      await client.invalidateQueries({ queryKey: queryKeys.applications('all') })
+      await client.invalidateQueries({ queryKey: queryKeys.applicationsRoot })
       await client.invalidateQueries({ queryKey: queryKeys.stats })
       onOpenChange(false)
     },

@@ -140,7 +140,8 @@ export default function HealthPage() {
   const rows = sorted.slice((current - 1) * pageSize, current * pageSize)
 
   function downloadCsv() {
-    const blob = new Blob([toCsv(friends)], { type: 'text/csv;charset=utf-8' })
+    // 跟随当前的筛选与排序导出，导出的就是看到的
+    const blob = new Blob([toCsv(sorted)], { type: 'text/csv;charset=utf-8' })
     downloadBlob(blob, `youlin-health-${new Date().toISOString().slice(0, 10)}.csv`)
   }
 

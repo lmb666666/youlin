@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   Check,
   LogOut,
@@ -53,6 +54,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       client.clear()
       navigate('/admin/login')
     },
+    onError: (error) => toast.error(error instanceof Error ? error.message : '登出失败'),
   })
 
   return (
@@ -85,7 +87,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             >
               <item.icon className="size-4 shrink-0 group-aria-[current=page]:text-primary" />
               {item.label}
-              {item.label === '申请' && pending > 0 && (
+              {item.badge === 'pendingApplications' && pending > 0 && (
                 <span className="ml-auto rounded-full border border-danger-border bg-danger-bg px-1.5 py-0.5 text-[10px] font-medium leading-none text-danger">
                   {pending}
                 </span>
@@ -135,11 +137,12 @@ export function AppShell() {
     }
   }, [settings, setTheme])
 
-  // 强调色：hex 才生效，前景色自动取对比度更高的一侧
+  // 强调色：hex 才生效，前景色自动取对比度更高的一侧；
+  // hover/ring 的混色方向取决于明暗主题，切换主题时需要重放
   const accent = typeof settings['ui.accentColor'] === 'string' ? settings['ui.accentColor'] : ''
   useEffect(() => {
     applyAccentColor(accent)
-  }, [accent])
+  }, [accent, theme])
   useEffect(() => () => clearAccentColor(), [])
 
   useEffect(() => {

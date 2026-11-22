@@ -21,6 +21,8 @@ export const queryKeys = {
   articles: ['articles'] as const,
   crawlStatus: ['crawl-status'] as const,
   applications: (status: string = 'all') => ['applications', status] as const,
+  /** 审批/拒绝/清理后统一失效整个 applications 域（含 dashboard 的 pending 视图） */
+  applicationsRoot: ['applications'] as const,
   backupStatus: ['backup', 'status'] as const,
   davFiles: ['backup', 'dav-files'] as const,
 }

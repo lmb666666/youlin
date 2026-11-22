@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Avatar } from '@/components/common/avatar'
 import { FormField, fieldAria } from '@/components/common/form-field'
 import { api, ApiError } from '@/lib/api'
-import { queryKeys } from '@/lib/query'
+import { invalidateLinkData } from '@/lib/query'
 
 const optionalFormUrl = z.union([httpUrl, z.literal('')]).optional().nullable()
 const friendFormSchema = friendCreateSchema
@@ -129,9 +129,7 @@ export function FriendDialog({
         : api('/api/admin/friends', { method: 'POST', body: JSON.stringify(body) })
     },
     onSuccess: () => {
-      for (const key of [queryKeys.friends, queryKeys.groups, queryKeys.stats, queryKeys.health]) {
-        void client.invalidateQueries({ queryKey: key })
-      }
+      invalidateLinkData(client)
       onOpenChange(false)
     },
     onError: (error) => {
