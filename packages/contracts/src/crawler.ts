@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { httpUrl } from './common'
 
 export const sourceStateSchema = z.object({
   reachable: z.boolean().nullable(),
@@ -71,8 +72,8 @@ export const probeResultSchema = z.object({
 })
 
 export const probeInputSchema = z.object({
-  link: z.string(),
-  feed: z.string().optional().nullable(),
+  link: httpUrl,
+  feed: z.union([httpUrl, z.literal('')]).optional().nullable(),
 })
 
 export type SourceState = z.infer<typeof sourceStateSchema>

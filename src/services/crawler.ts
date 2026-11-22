@@ -5,7 +5,7 @@ import { runDetached } from '../util/bg'
 import { logger } from '../log'
 import { acquireLock, releaseLock, renewLock } from '../repositories/locks'
 import { SCHEDULER_LOCK_KEY, SCHEDULER_LOCK_RENEW_MS, SCHEDULER_LOCK_TTL_MS } from '../server/scheduler-lock'
-import { readRoundState, roundStatus, runHealthRound, runManualRound } from '../crawler/crawl'
+import { crawlSource, readRoundState, roundStatus, runHealthRound, runManualRound } from '../crawler/crawl'
 import { extractDeclaredFeeds, commonFeedPaths } from '../crawler/discover'
 import { fetchRemote } from '../crawler/http'
 import { parseFeed } from '../crawler/parse'
@@ -19,7 +19,13 @@ import {
   listHealthSources,
 } from '../repositories/crawl'
 import type { AppConfig, Db, Env } from '../types'
-import type { ArticleListResponse, CrawlStatus, HealthListResponse, ProbeResult } from '@youlin/contracts'
+import {
+  probeInputSchema,
+  type ArticleListResponse,
+  type CrawlStatus,
+  type HealthListResponse,
+  type ProbeResult,
+} from '@youlin/contracts'
 
 export function listHealthView(db: Db): HealthListResponse {
   return {
@@ -144,16 +150,14 @@ export async function crawlFriend(db: Db, env: Env, cfg: AppConfig, id: number):
   if (!cfg.crawl.enabled && !cfg.linkCheck.enabled) {
     throw new AppError(400, 'crawl_disabled', '抓取与体检总开关均已关闭')
   }
-  const { crawlSource } = await import('../crawler/crawl')
   return crawlSource(db, env, cfg, friend)
 }
 
 export async function probeInput(env: Env, cfg: AppConfig, raw: unknown): Promise<ProbeResult> {
-  const input = raw as { link?: unknown; feed?: unknown } | null
-  const link = typeof input?.link === 'string' ? input.link.trim() : ''
-  if (!/^https?:\/\//.test(link)) throw new AppError(400, 'invalid_link', '请先填写合法的站点链接（http/https）')
-  const feed = typeof input?.feed === 'string' && input.feed.trim() !== '' ? input.feed.trim() : null
-  const probe = await runProbe(env, cfg, { link, feed })
+  const parsed = probeInputSchema.safeParse(raw)
+  if (!parsed.success) throw new AppError(400, 'invalid_link', '请先填写合法的站点链接（http/https）')
+  const feed = parsed.data.feed && parsed.data.feed.trim() !== '' ? parsed.data.feed.trim() : null
+  const probe = await runProbe(env, cfg, { link: parsed.data.link, feed })
   if ('error' in probe) throw new AppError(502, 'probe_unreachable', probe.error)
   return probe
 }
