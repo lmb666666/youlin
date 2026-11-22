@@ -3,7 +3,7 @@ import { runtimeGet, runtimeSet } from '../crawler/http'
 import { logger } from '../log'
 import { collectBackup } from './collect'
 import { BACKUP_MAX_BYTES, gzipBytes } from './codec'
-import { backupFileName } from './format'
+import { backupFileName, preRestoreFileName } from './format'
 import { recordBackupStatus, type BackupStatus } from './status'
 import { WebDavError, webdavClientFor, webdavReady } from './webdav'
 
@@ -32,14 +32,6 @@ export interface WebdavRunResult {
   error?: string
 }
 
-function preRestoreName(at = new Date()): string {
-  const p = (n: number) => String(n).padStart(2, '0')
-  const stamp =
-    `${at.getUTCFullYear()}${p(at.getUTCMonth() + 1)}${p(at.getUTCDate())}-` +
-    `${p(at.getUTCHours())}${p(at.getUTCMinutes())}${p(at.getUTCSeconds())}`
-  return `pre-restore-${stamp}.json.gz`
-}
-
 export async function runWebdavBackup(
   db: Env['DB'],
   env: Env,
@@ -49,12 +41,12 @@ export async function runWebdavBackup(
   const at = new Date().toISOString()
   try {
     const client = webdavClientFor(cfg, env.WEBDAV_PASSWORD)
-    const envelope = await collectBackup(db, env, { includeArticles: opts.includeArticles })
+    const envelope = await collectBackup(db, { includeArticles: opts.includeArticles })
     const gz = await gzipBytes(new TextEncoder().encode(JSON.stringify(envelope)))
     if (gz.byteLength > BACKUP_MAX_BYTES) {
       throw new Error(`备份超过 ${BACKUP_MAX_BYTES / 1024 / 1024} MB 上限，请关闭「包含文章」或清理申请后重试`)
     }
-    const name = opts.target === 'pre-restore' ? preRestoreName() : backupFileName()
+    const name = opts.target === 'pre-restore' ? preRestoreFileName() : backupFileName()
     await client.ensureDir()
     await client.put(name, gz)
     // 保留策略失败只记日志：上传已成功，不应把这次记成失败

@@ -1,7 +1,7 @@
 import type { Env } from '../types'
-import { loadFlatSettings } from '../config/loader'
 import { isoUtc } from '../util/time'
 import { APP_VERSION } from '../version'
+import { listSettings } from '../repositories/settings'
 import { collectArticleRows, collectCoreRows, collectStateRows } from '../repositories/backup'
 import {
   BACKUP_FORMAT,
@@ -30,7 +30,9 @@ export interface CollectOptions {
   includeArticles: boolean
 }
 
-export async function collectBackup(db: Env['DB'], env: Env, opts: CollectOptions): Promise<BackupEnvelope> {
+export async function collectBackup(db: Env['DB'], opts: CollectOptions): Promise<BackupEnvelope> {
+  // 全程同步执行（better-sqlite3 单连接，中间无 await 切换），
+  // 天然构成一致快照：不会出现「文章已入列但友链已被删」的孤儿引用。
   const { groups: groupsRows, friends: friendsRows, applications: appsRows } = collectCoreRows(db)
   const groupName = new Map(groupsRows.map((g) => [g.id, g.name]))
 
@@ -96,7 +98,18 @@ export async function collectBackup(db: Env['DB'], env: Env, opts: CollectOption
     return item
   })
 
-  const settings = await loadFlatSettings(db, env)
+  // 备份只导出 settings 表里的应用配置层（排除 internal.* 簿记与 settings.* 版本号）：
+  // 代码默认值不固化进备份，本实例的环境变量覆盖也不会被复制成目标实例的数据库值。
+  // 恢复侧逐键校验会再兜底一次。
+  const settings: Record<string, unknown> = {}
+  for (const row of listSettings(db)) {
+    if (row.key.startsWith('internal.') || row.key.startsWith('settings.')) continue
+    try {
+      settings[row.key] = JSON.parse(row.value)
+    } catch {
+      /* 坏值不入备份 */
+    }
+  }
 
   const groupItems: BackupData['groups'] = groupsRows.map((g) => {
     const item: BackupData['groups'][number] = { name: g.name, sort: g.sort }

@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser'
 import { BACKUP_MAX_BYTES } from './codec'
+import { utcFileStamp } from './format'
 
 /**
  * 极简 WebDAV 客户端（fetch 实现，Node 运行时）
@@ -280,9 +281,7 @@ export class WebDavClient {
 
 /** 文件名时间戳（UTC）早于 now - ttl 的比较基准：pre-restore-20261024-073000 这类字典序可直接比 */
 function nameStampBefore(ttlMs: number): string {
-  const at = new Date(Date.now() - ttlMs)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `pre-restore-${at.getUTCFullYear()}${p(at.getUTCMonth() + 1)}${p(at.getUTCDate())}-${p(at.getUTCHours())}${p(at.getUTCMinutes())}${p(at.getUTCSeconds())}`
+  return `pre-restore-${utcFileStamp(new Date(Date.now() - ttlMs))}`
 }
 
 /** 展示用：抹掉可能内嵌在地址里的凭据 */

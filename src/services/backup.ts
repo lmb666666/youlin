@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto'
 import { AppError } from '../errors'
+import { logger } from '../log'
 import { runtimeGet, runtimeSet } from '../crawler/http'
 import { collectBackup } from '../backup/collect'
 import { BACKUP_MAX_BYTES, decodeBackup, gzipBytes } from '../backup/codec'
@@ -8,6 +10,8 @@ import { invalidateConfigCache } from '../config/loader'
 import { readBackupStatus, recordBackupStatus } from '../backup/status'
 import { runWebdavBackup } from '../backup/run'
 import { BACKUP_FILE_PATTERN, WebDavError, redactWebdavUrl, webdavClientFor, webdavReady } from '../backup/webdav'
+import { acquireLock, releaseLock } from '../repositories/locks'
+import { SCHEDULER_LOCK_KEY, SCHEDULER_LOCK_TTL_MS } from '../server/scheduler-lock'
 import type { AppConfig, Db, Env } from '../types'
 import type { BackupPreview } from '@youlin/contracts'
 
@@ -39,7 +43,7 @@ function assertWebdavReady(cfg: AppConfig, env: Env): void {
 
 /** 下载备份：同时签发恢复凭证并记录最近一次备份状态 */
 export async function createBackupArchive(db: Db, env: Env, includeArticles: boolean): Promise<BackupArchive> {
-  const envelope = await collectBackup(db, env, { includeArticles })
+  const envelope = await collectBackup(db, { includeArticles })
   const bytes = await gzipBytes(new TextEncoder().encode(JSON.stringify(envelope)))
   if (bytes.byteLength > BACKUP_MAX_BYTES) {
     throw new AppError(413, 'backup_too_large', `备份超过 ${BACKUP_MAX_BYTES / 1024 / 1024} MB 上限，可关闭「包含文章」或清理申请后重试`)
@@ -101,7 +105,19 @@ async function prepareRestore(db: Db, env: Env, cfg: AppConfig): Promise<string 
 
 async function restoreEnvelope(db: Db, env: Env, cfg: AppConfig, envelope: BackupEnvelope): Promise<RestoreResult> {
   const preRestoreFile = await prepareRestore(db, env, cfg)
-  const summary = await applyRestore(db, envelope)
+  // 恢复的大事务与调度器写入互斥：拿到调度锁再动手，避免 cron 抓取/自动备份在恢复中途撞 SQLITE_BUSY
+  const owner = randomUUID()
+  if (!(await acquireLock(db, SCHEDULER_LOCK_KEY, owner, SCHEDULER_LOCK_TTL_MS))) {
+    throw new AppError(409, 'round_running', '已有抓取/体检任务进行中，请稍后再恢复')
+  }
+  let summary: RestoreSummary
+  try {
+    summary = await applyRestore(db, envelope)
+  } finally {
+    await releaseLock(db, SCHEDULER_LOCK_KEY, owner).catch((err) => {
+      logger.warn({ err }, 'restore scheduler lock release failed')
+    })
+  }
   // 恢复后当前数据已换代：旧凭证必须失效，下一次恢复需重新下载当前数据
   await runtimeSet(db, PREBACKUP_TICKET_KEY, null)
   invalidateConfigCache()

@@ -122,13 +122,23 @@ export type BackupSourceState = z.infer<typeof backupSourceState>
 export type BackupData = z.infer<typeof backupData>
 export type BackupEnvelope = z.infer<typeof backupEnvelope>
 
-/** 备份文件命名：youlin-backup-20261017-140500.json.gz（UTC） */
-export function backupFileName(at = new Date()): string {
+/** UTC 文件名时间戳（YYYYMMDD-HHMMSS）：备份与恢复前存档共用，字典序即时间序 */
+export function utcFileStamp(at = new Date()): string {
   const p = (n: number, w = 2) => String(n).padStart(w, '0')
-  const stamp =
+  return (
     `${at.getUTCFullYear()}${p(at.getUTCMonth() + 1)}${p(at.getUTCDate())}-` +
     `${p(at.getUTCHours())}${p(at.getUTCMinutes())}${p(at.getUTCSeconds())}`
-  return `youlin-backup-${stamp}.json.gz`
+  )
+}
+
+/** 备份文件命名：youlin-backup-20261017-140500.json.gz（UTC） */
+export function backupFileName(at = new Date()): string {
+  return `youlin-backup-${utcFileStamp(at)}.json.gz`
+}
+
+/** 恢复前自动存档命名：pre-restore-20261017-140500.json.gz（UTC） */
+export function preRestoreFileName(at = new Date()): string {
+  return `pre-restore-${utcFileStamp(at)}.json.gz`
 }
 
 export function countOf(data: BackupData): NonNullable<BackupEnvelope['counts']> {

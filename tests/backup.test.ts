@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { env, SELF } from './helpers'
 import { gzipBytes, gunzipBytes } from '../src/backup/codec'
-import { CONFIG_FIELDS } from '../src/config/definition'
 import type { BackupEnvelope } from '../src/backup/format'
 
 const BASE = 'https://example.com'
@@ -177,9 +176,9 @@ describe('备份恢复', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as { ok: boolean; summary: Record<string, number> }
     expect(body.ok).toBe(true)
-    // 设置项导出的是合并默认值后的完整生效配置，因此条数等于配置字段总数
+    // 设置项只导出 DB 层显式保存的键（ui.pageSize + site.name），默认值不固化进备份
     expect(body.summary).toMatchObject({
-      groups: 1, friends: 2, applications: 1, articles: 1, sourceState: 1, settings: CONFIG_FIELDS.length,
+      groups: 1, friends: 2, applications: 1, articles: 1, sourceState: 1, settings: 2,
     })
 
     // 公开接口：分组、顺序、隐藏过滤都回来了

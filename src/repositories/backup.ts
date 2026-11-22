@@ -5,6 +5,14 @@ import { dbTime, isoUtc } from '../util/time'
 import type { BackupData } from '../backup/format'
 import type { Db } from '../types'
 
+/**
+ * 恢复路径的时间统一走 isoUtc 归一到 UTC 再截断：
+ * 备份可能由第三方生成，带 +08:00 偏移的值直接 slice 会把墙钟当 UTC，时间整体偏移。
+ */
+function restoreTime(value: string): string {
+  return dbTime(isoUtc(value) ?? value)
+}
+
 /** 备份导出用的原始行；自然键映射在 backup/collect.ts 完成 */
 export function collectCoreRows(db: Db) {
   const orm = getOrm(db)
@@ -135,7 +143,7 @@ export function replaceAllData(
             inCircle: f.inCircle ? 1 : 0,
             status: f.status,
             sort: f.sort,
-            createdAt: f.createdAt ? dbTime(f.createdAt) : sql`datetime('now')`,
+            createdAt: f.createdAt ? restoreTime(f.createdAt) : sql`datetime('now')`,
           })),
         )
         .returning({ id: friends.id, link: friends.link })
@@ -159,7 +167,7 @@ export function replaceAllData(
         author: a.author ?? null,
         // 抓取路径存 ISO 8601；恢复也必须保持同一格式，避免字符串排序/清理边界错乱
         publishedAt: isoUtc(a.publishedAt) ?? a.publishedAt,
-        fetchedAt: a.fetchedAt ? dbTime(a.fetchedAt) : sql`datetime('now')`,
+        fetchedAt: a.fetchedAt ? restoreTime(a.fetchedAt) : sql`datetime('now')`,
       }))
     for (let i = 0; i < articleRows.length; i += CHUNK) {
       tx.insert(articles).values(articleRows.slice(i, i + CHUNK)).run()
@@ -184,15 +192,15 @@ export function replaceAllData(
         finalUrl: s.finalUrl ?? null,
         backlinkChecked: boolInt(s.backlinkChecked),
         backlink: boolInt(s.backlink),
-        unreachableSince: s.unreachableSince ? dbTime(s.unreachableSince) : null,
-        rssUnavailableSince: s.rssUnavailableSince ? dbTime(s.rssUnavailableSince) : null,
-        lastPostPublished: s.lastPostPublished ? dbTime(s.lastPostPublished) : null,
+        unreachableSince: s.unreachableSince ? restoreTime(s.unreachableSince) : null,
+        rssUnavailableSince: s.rssUnavailableSince ? restoreTime(s.rssUnavailableSince) : null,
+        lastPostPublished: s.lastPostPublished ? restoreTime(s.lastPostPublished) : null,
         lastPostDaysAgo: s.lastPostDaysAgo ?? null,
-        lastOkAt: s.lastOkAt ? dbTime(s.lastOkAt) : null,
+        lastOkAt: s.lastOkAt ? restoreTime(s.lastOkAt) : null,
         lastError: s.lastError ?? null,
         failCount: s.failCount ?? 0,
-        nextCheckAt: s.nextCheckAt ? dbTime(s.nextCheckAt) : null,
-        checkedAt: s.checkedAt ? dbTime(s.checkedAt) : null,
+        nextCheckAt: s.nextCheckAt ? restoreTime(s.nextCheckAt) : null,
+        checkedAt: s.checkedAt ? restoreTime(s.checkedAt) : null,
       }))
     for (let i = 0; i < stateRows.length; i += CHUNK) {
       tx.insert(sourceState).values(stateRows.slice(i, i + CHUNK)).run()
@@ -221,12 +229,12 @@ export function replaceAllData(
         contact: a.contact ?? null,
         note: a.note ?? null,
         backlinkOk: boolInt(a.backlinkOk),
-        backlinkCheckedAt: a.backlinkCheckedAt ? dbTime(a.backlinkCheckedAt) : null,
+        backlinkCheckedAt: a.backlinkCheckedAt ? restoreTime(a.backlinkCheckedAt) : null,
         backlinkDetail: a.backlinkDetail ?? null,
         status,
         reviewNote,
-        createdAt: a.createdAt ? dbTime(a.createdAt) : sql`datetime('now')`,
-        reviewedAt: a.reviewedAt ? dbTime(a.reviewedAt) : null,
+        createdAt: a.createdAt ? restoreTime(a.createdAt) : sql`datetime('now')`,
+        reviewedAt: a.reviewedAt ? restoreTime(a.reviewedAt) : null,
       }
     })
     for (let i = 0; i < applicationRows.length; i += CHUNK) {
