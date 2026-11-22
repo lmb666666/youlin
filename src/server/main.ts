@@ -6,6 +6,7 @@ import Database from 'better-sqlite3'
 import { app } from '../app'
 import { loadConfig } from '../config/loader'
 import { runScheduledJobs } from '../jobs'
+import { resetStaleRoundOnBoot } from '../crawler/crawl'
 import { createFetchHandler } from './assets'
 import { SqliteDb } from './db'
 import { createEnv, loadDotEnv } from './env'
@@ -48,6 +49,11 @@ logger.info({ dbPath: DB_PATH, applied: migration.applied.length, skipped: migra
 
 const db = new SqliteDb(raw)
 const env = createEnv(db)
+
+// 清理上一个进程可能残留的未结束轮转进度（崩溃时 finally 不会执行）
+if (await resetStaleRoundOnBoot(env.DB)) {
+  logger.info('reset unfinished round state left by previous process')
+}
 const handler = createFetchHandler(WEB_ROOT, (req, e) => app.fetch(req, e, undefined))
 
 const server = serve(

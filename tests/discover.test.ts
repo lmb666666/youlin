@@ -26,6 +26,11 @@ describe('feed 发现', () => {
     expect(extractDeclaredFeeds(html, 'https://x.example.com/')).toEqual(['https://x.example.com/rss.xml'])
   })
 
+  it('extractDeclaredFeeds 识别多值 rel（rel="home alternate"）', () => {
+    const html = `<link rel="home alternate" type="application/rss+xml" href="/feed.xml">`
+    expect(extractDeclaredFeeds(html, 'https://x.example.com/')).toEqual(['https://x.example.com/feed.xml'])
+  })
+
   it('commonFeedPaths 覆盖常见路径且基于站点根', () => {
     const paths = commonFeedPaths('https://blog.example.com/')
     expect(paths[0]).toBe('https://blog.example.com/feed')

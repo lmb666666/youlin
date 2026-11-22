@@ -42,8 +42,17 @@ export function applyMigrations(db: Database.Database, dir: string): MigrationRe
       db.exec(sql)
       db.prepare(`INSERT INTO ${TABLE} (name) VALUES (?)`).run(file)
     })
-    run()
-    applied.push(file)
+    try {
+      run()
+      applied.push(file)
+    } catch (err) {
+      // 并发首启：另一实例可能已应用同一迁移（事务已回滚，记录在对方名下）；
+      // 重读确认后跳过，否则原样抛出阻止启动
+      const doneNow = new Set(
+        (db.prepare(`SELECT name FROM ${TABLE}`).all() as { name: string }[]).map((r) => r.name),
+      )
+      if (!doneNow.has(file)) throw err
+    }
   }
   return { applied, skipped: files.length - applied.length }
 }

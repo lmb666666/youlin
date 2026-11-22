@@ -7,7 +7,10 @@ export function extractDeclaredFeeds(html: string, baseUrl: string): string[] {
   const out: string[] = []
   const linkTags = html.match(/<link\b[^>]*>/gi) ?? []
   for (const tag of linkTags) {
-    if (!/\brel\s*=\s*["']?alternate/i.test(tag)) continue
+    // rel 可为空格分隔的多值（rel="home alternate"），按 token 匹配而不是子串
+    const rel = /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag)
+    const relValue = (rel?.[1] ?? rel?.[2] ?? rel?.[3] ?? '').toLowerCase()
+    if (!relValue.split(/\s+/).includes('alternate')) continue
     const type = /\btype\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1] ?? ''
     const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1]
     if (!href || !FEED_TYPES.test(type)) continue

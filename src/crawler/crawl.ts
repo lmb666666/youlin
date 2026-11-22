@@ -120,7 +120,12 @@ async function runRound(
       }
       done++
       if (done === sources.length || done % step === 0) {
-        await runtimeSet(db, 'internal.round', { kind, startedAt, done, total: sources.length })
+        // 进度写失败（如恢复大备份时 SQLITE_BUSY）不中断整轮：下个节流点会补写
+        try {
+          await runtimeSet(db, 'internal.round', { kind, startedAt, done, total: sources.length })
+        } catch (e) {
+          logger.debug({ err: e, kind }, 'round progress write skipped')
+        }
       }
     })
   } finally {
@@ -130,6 +135,19 @@ async function runRound(
       finishedAt: new Date().toISOString(),
     })
   }
+}
+
+/**
+ * 进程启动时清理上一个进程残留的未结束轮转。
+ * 崩溃/部署中断时 finally 不会执行，internal.round 会停在 done<total；
+ * 此时不清理的话，重启后最长 MAX_ROUND_MS 内手动触发会被误拒。
+ * 启动后任何未结束的轮转都必然来自已死进程，直接补 finishedAt 是安全的。
+ */
+export async function resetStaleRoundOnBoot(db: Env['DB']): Promise<boolean> {
+  const round = await readRoundState(db)
+  if (!round || round.finishedAt) return false
+  await runtimeSet(db, 'internal.round', { ...round, finishedAt: new Date().toISOString() })
+  return true
 }
 
 /** 手动全量抓取一轮（所有 active 源，并发受限；进度写 internal.round） */
