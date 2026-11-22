@@ -24,6 +24,8 @@ data/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+# 旧 Workers 本地状态目录（归档遗留，防止未来残留非 sqlite 文件）
+.wrangler/
 
 # ── 日志与系统/编辑器文件 ───────────────────────────────
 *.log

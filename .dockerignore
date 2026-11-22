@@ -2,6 +2,7 @@
 .git
 .github
 internal
+.zcode
 node_modules
 **/node_modules
 dist
@@ -22,3 +23,5 @@ coverage
 .idea
 .vscode
 docs
+tests
+schemas

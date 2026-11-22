@@ -71,6 +71,7 @@ internal/      内部资料，永久不提交
 ## 测试 | Testing
 
 - **Node 服务端**：`tests/**/*.test.ts`，Vitest + Node + better-sqlite3 内存库；不依赖外部服务。
+  - 划分逻辑：`tests/node/` 下的用例依赖 `src/server`（TS 单独编译域），覆盖运行时适配（静态资源、迁移边界、锁、代理、gzip 上限）；其余服务端用例放 `tests/` 根目录。
 - **前端**：`web/src/**/*.test.{ts,tsx}`，Vitest + happy-dom + Testing Library。
 - 所有改动必须保证 `pnpm lint && pnpm typecheck && pnpm test` 全绿；提交前建议再跑 `pnpm build` 与 `pnpm build:server`。
 - 涉及以下区域的改动请补测试：

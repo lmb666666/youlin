@@ -89,7 +89,7 @@ curl -fsS http://127.0.0.1:8787/healthz
 
 首次登录后建议先到「设置」填写站点名称、主站地址、时区，并检查申请页与备份配置。Compose 默认只把端口绑到 `127.0.0.1`，远程访问请通过反向代理，见[部署指南](docs/deployment.md)。
 
-> 生产环境建议把 Compose 里的 `:latest` 换成具体版本（如 `:0.4.0`）或 digest，升级与回滚更可控。
+> 生产环境建议保持 Compose 里的镜像为具体版本（如 `:0.4.0`）或 digest，升级与回滚更可控。
 
 ### 本地开发
 
@@ -171,7 +171,7 @@ docker compose up -d
 - 通过 HTTPS 暴露管理台；反向代理要正确设置 `X-Forwarded-Proto`，并按部署方式配置 `TRUST_PROXY`。
 - 不要把 `.env`、数据库或备份文件提交到仓库；备份包含申请人的联系方式与备注，且默认不加密。
 - WebDAV 建议使用 HTTPS；HTTP WebDAV 会让 Basic 认证凭据以明文传输。
-- 镜像默认以非 root、只读根文件系统、`cap_drop: ALL`、`no-new-privileges` 运行。
+- Compose 默认以非 root 镜像、只读根文件系统、`cap_drop: ALL`、`no-new-privileges` 运行（裸 `docker run` 需自行带上这些参数）。
 
 完整清单与漏洞报告方式见[SECURITY.md](SECURITY.md)。
 

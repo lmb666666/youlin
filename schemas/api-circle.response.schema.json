@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://youlin.dev/schemas/api-circle.response.schema.json",
+  "$id": "https://github.com/lmb666666/youlin/schemas/api-circle.response.schema.json",
   "title": "GET /api/circle 响应（朋友圈）",
   "description": "文章聚合 + 统计。friends/failed 基于有 feed 的参与源；active/articles/updatedAt 与 articles 基于 active+in_circle。输出按 publishedAt 倒序截断。字段只增不改。",
   "type": "object",

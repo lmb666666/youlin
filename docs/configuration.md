@@ -30,7 +30,7 @@ YOULIN_CONFIG_OVERRIDES='{"site.url":"https://example.com","api.cacheSeconds":60
 - 值会经过与设置页相同的 zod 校验；非法值按个丢弃，回退到下一层。
 - 整段 JSON 非法时整段忽略，不会阻断启动。
 - 覆盖值优先于设置页：在设置页修改被覆盖的键，保存后仍会被环境变量盖回去；这是预期行为。
-- 覆盖值是「生效值」，会进入设置导出与备份；恢复备份不会删除环境变量，所以覆盖仍然生效。
+- 覆盖值是「生效值」，会进入设置导出；数据备份则只包含 settings 表里显式保存的键（默认值不固化进备份，环境变量覆盖也不会被复制成目标实例的数据库值）。
 - 环境变量变更需要重启/重建容器；应用配置写入会使进程内缓存立即失效（默认缓存 5 秒）。
 
 ## 应用级配置 | Application Settings
@@ -80,7 +80,7 @@ YOULIN_CONFIG_OVERRIDES='{"site.url":"https://example.com","api.cacheSeconds":60
 | `linkCheck.timeoutSeconds` | 数字（1–60） | `15` | 单次超时（秒）。体检单个源的超时时间。 |
 | `linkCheck.concurrency` | 数字（1–50） | `10` | 全量检测并发。手动全量体检时的并发数。 |
 | `linkCheck.statusApiUrl` | 文本 | 空 | 状态 API 兜底。第三方状态检测地址，{url} 占位符，留空关闭。 |
-| `linkCheck.backoffLadder` | JSON | `[[10,120],[30,240],[60,360]]` | 失联退避阶梯。[失联天数, 复查间隔小时]，升序排列。 |
+| `linkCheck.backoffLadder` | JSON | `[[10,120],[30,240],[60,360]]` | 失联退避阶梯。[失联天数, 复查间隔小时]，两列均需升序。 |
 
 ### 反链检测 | Backlink（`backlink.*`）
 
@@ -182,4 +182,4 @@ YOULIN_CONFIG_OVERRIDES='{"site.url":"https://example.com","api.cacheSeconds":60
 | --- | --- | --- | --- |
 | `notify.webhookUrl` | 文本 | 空 | Webhook 地址。预留字段，当前不会发送通知。 |
 | `notify.events` | 字符串列表 | `["application","linkDown"]` | 通知事件。预留字段；当前不会发送。 |
-<!-- CONFIG_TABLE_END -->` 之间的内容；CI 会运行同一命令并检查 diff。不要手改生成块，改定义文件。
+<!-- CONFIG_TABLE_END -->

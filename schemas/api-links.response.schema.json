@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://youlin.dev/schemas/api-links.response.schema.json",
+  "$id": "https://github.com/lmb666666/youlin/schemas/api-links.response.schema.json",
   "title": "GET /api/links 响应（友链数据）",
   "description": "友链分组数据，每条含体检摘要 health。字段只增不改；可选字段无值不输出。示例见 schemas/examples/api-links.example.json。",
   "type": "object",

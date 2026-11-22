@@ -10,7 +10,8 @@
 
 services:
   youlin:
-    image: ghcr.io/lmb666666/youlin:latest
+    # 固定版本，升级更可控（跟随 Release 更新这一行；latest 由镜像仓库滚动维护）
+    image: ghcr.io/lmb666666/youlin:0.4.0
     # 想本地构建时改成：
     # build: .
     container_name: youlin
@@ -27,6 +28,8 @@ services:
     pids_limit: 100
     stop_grace_period: 15s
     ports:
+      # 改 PORT 必须写进 .env：这里两侧都用 ${PORT} 做 Compose 变量替换，
+      # 而 shell 里 export 的 PORT 不会传进容器（env_file 只读 .env 文件）
       - "127.0.0.1:${PORT:-8787}:${PORT:-8787}"
     env_file:
       - .env

@@ -117,7 +117,7 @@ describe('接口一 GET /api/links 契约', () => {
     expect(health.unreachableDays).toBeNull()
     expect(health.checkedAt).toBe('2026-10-05T13:55:00Z')
 
-    // 可选字段无值不输出（title 现为必填，始终存在；feed/health 等仍按需输出）
+    // 可选字段无值不输出（title 由管理端校验必填，正常数据总有值，但契约上仍可选；feed/health 等按需输出）
     const minimal = g.links[1]!
     expect(minimal.author).toBe('Aki')
     expect(minimal.title).toBe('Aki 的小站')
