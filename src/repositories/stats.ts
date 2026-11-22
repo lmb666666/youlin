@@ -1,6 +1,7 @@
-import { and, count, eq, isNull, lte, max, or, sql } from 'drizzle-orm'
+import { and, count, eq, max, sql } from 'drizzle-orm'
 import { getOrm } from '../server/orm'
 import { applications, articles, friends, sourceState } from '../server/schema'
+import { countDueFriends } from './crawl'
 import type { Db } from '../types'
 
 export function adminStats(db: Db) {
@@ -30,13 +31,8 @@ export function adminStats(db: Db) {
       .leftJoin(sourceState, eq(sourceState.friendId, friends.id))
       .where(and(active, eq(sourceState.reachable, 0)))
       .get()?.n ?? 0
-  const due =
-    orm
-      .select({ n: count() })
-      .from(friends)
-      .leftJoin(sourceState, eq(sourceState.friendId, friends.id))
-      .where(and(active, or(isNull(sourceState.nextCheckAt), lte(sourceState.nextCheckAt, sql`datetime('now')`))))
-      .get()?.n ?? 0
+  // due 口径与抓取轮转共用同一个谓词（countDueFriends），避免两处实现漂移
+  const due = countDueFriends(db)
 
   return {
     friendsActive: Number(friendsActive),

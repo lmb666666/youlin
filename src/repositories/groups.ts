@@ -32,10 +32,6 @@ export function findGroupById(db: Db, id: number) {
   return getOrm(db).select().from(groups).where(eq(groups.id, id)).get() ?? null
 }
 
-export function findGroupByName(db: Db, name: string) {
-  return getOrm(db).select().from(groups).where(eq(groups.name, name)).get() ?? null
-}
-
 export function groupNameTaken(db: Db, name: string, excludeId?: number) {
   const where = excludeId === undefined ? eq(groups.name, name) : sql`${groups.name} = ${name} AND ${groups.id} != ${excludeId}`
   return Boolean(getOrm(db).select({ id: groups.id }).from(groups).where(where).get())
