@@ -179,9 +179,11 @@ export function importData(db: Db, body: unknown): ImportResult {
 
   const errors: ImportError[] = []
   const items: ImportFriendInput[] = []
+  let skipped = 0
   raw.forEach((r, i) => {
     const n = normalizeItem(r, groupOf(i), i, errors)
     if (n) items.push(n)
+    else skipped++
   })
 
   const result = importFriends(db, items)
@@ -189,7 +191,8 @@ export function importData(db: Db, body: unknown): ImportResult {
   return {
     imported: result.imported,
     updated: result.updated,
-    skipped: errors.length,
+    // skipped 只计未入库条目；字段级错误（丢字段但条目已导入）只出现在 errors 里
+    skipped,
     groupsCreated: result.groupsCreated,
     errors: errors.slice(0, 20),
   }

@@ -41,7 +41,9 @@ export function importFriends(db: Db, items: ImportFriendInput[]): ImportResult 
       tx.select({ id: groups.id, name: groups.name }).from(groups).all().map((g) => [g.name, g.id]),
     )
     const missing = [...new Set(items.map((it) => it.group ?? defaultGroup))].filter((n) => !groupIdByName.has(n))
-    const nextSort = groupIdByName.size
+    // 与 groups.ts 同口径：新分组排在 MAX(sort)+1，历史 sort 值偏大时不会插队
+    const nextSort =
+      tx.select({ next: sql<number>`COALESCE(MAX(${groups.sort}), -1) + 1` }).from(groups).get()?.next ?? 0
     let groupsCreated = 0
 
     if (missing.length > 0) {
