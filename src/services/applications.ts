@@ -90,6 +90,8 @@ export async function approveApplication(
     comment: application.note,
   }
   const friendId = commitApproval(db, id, groupId, friend, nowDb)
+  // repo 层带 pending 守卫：读-写窗口内被并发处理（双击/另一管理员）时落到这里
+  if (friendId === null) throw new AppError(409, 'already_reviewed', '该申请已被处理')
 
   // 通过后可选触发接入方重建（显式请求或 rebuild.auto + enabled）
   let rebuild: RebuildResult | null = null
@@ -115,7 +117,9 @@ export function rejectApplication(db: Db, id: number, raw: unknown): void {
     throw new AppError(409, 'already_reviewed', `该申请已处理（${application.status}）`)
   }
 
-  commitRejection(db, id, parsed.data.reason ?? null, dbTime(new Date().toISOString()))
+  if (!commitRejection(db, id, parsed.data.reason ?? null, dbTime(new Date().toISOString()))) {
+    throw new AppError(409, 'already_reviewed', '该申请已被处理')
+  }
 }
 
 /** 手动触发接入方重建，把结果映射为稳定错误码 */

@@ -124,6 +124,19 @@ describe('申请队列（管理端）', () => {
     expect(((await dup.json()) as { error: { code: string } }).error.code).toBe('duplicate_link')
   })
 
+  it('通过：since 空串是非法契约（表单层会归一为未填，服务端保持严格）', async () => {
+    const id = await seedApplication()
+    const res = await authed(`/api/admin/applications/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ since: '' }),
+    })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('validation_failed')
+    // 申请仍是 pending，可正常按留空语义（不传 since）通过
+    const ok = await authed(`/api/admin/applications/${id}/approve`, { method: 'POST', body: '{}' })
+    expect(ok.status).toBe(200)
+  })
+
   it('拒绝：记录原因；再次处理 409', async () => {
     const id = await seedApplication()
     const rej = await authed(`/api/admin/applications/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason: '站点内容不符合' }) })

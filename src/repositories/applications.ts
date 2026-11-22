@@ -80,41 +80,45 @@ export function createAutoApprovedApplication(
   })
 }
 
-/** 审核通过：建友链 + 状态翻转在同一事务内完成 */
+/** 审核通过：先原子认领 pending 状态，再建友链；并发双击时认领失败返回 null */
 export function approveApplication(
   db: Db,
   applicationId: number,
   groupId: number,
   friend: Omit<FriendInsert, 'groupId'>,
   now: string,
-): number {
+): number | null {
   return getOrm(db).transaction((tx) => {
+    const claimed = tx
+      .update(applications)
+      .set({ status: 'approved', reviewedAt: now })
+      .where(and(eq(applications.id, applicationId), eq(applications.status, 'pending')))
+      .run()
+    if (claimed.changes === 0) return null
     const friendId = tx
       .insert(friends)
       .values({ ...friend, groupId })
       .returning({ id: friends.id })
       .get().id
     tx.update(applications)
-      .set({
-        status: 'approved',
-        reviewNote: `通过（友链 #${friendId}）`,
-        reviewedAt: now,
-      })
+      .set({ reviewNote: `通过（友链 #${friendId}）` })
       .where(eq(applications.id, applicationId))
       .run()
     return friendId
   })
 }
 
-export function rejectApplication(db: Db, id: number, reason: string | null, now: string): void {
-  getOrm(db)
+/** 拒绝申请；并发下已被处理时返回 false */
+export function rejectApplication(db: Db, id: number, reason: string | null, now: string): boolean {
+  const result = getOrm(db)
     .update(applications)
     .set({ status: 'rejected', reviewNote: reason, reviewedAt: now })
-    .where(eq(applications.id, id))
+    .where(and(eq(applications.id, id), eq(applications.status, 'pending')))
     .run()
+  return result.changes > 0
 }
 
-/** 原子预占一次申请名额；超限返回 false */
+/** 原子预占一次申请名额；超限返回 false（IMMEDIATE：读-判-写跨进程不丢更新） */
 export function reserveApplyAttempt(db: Db, ip: string, day: string, limit: number): boolean {
   return getOrm(db).transaction((tx) => {
     tx.delete(applyRateLimit).where(lt(applyRateLimit.day, day)).run()
@@ -133,7 +137,7 @@ export function reserveApplyAttempt(db: Db, ip: string, day: string, limit: numb
       })
       .run()
     return true
-  })
+  }, { behavior: 'immediate' })
 }
 
 /** 提交失败时归还预占名额，保持“成功才计数”的语义 */
